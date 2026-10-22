@@ -1,0 +1,45 @@
+name: Bug report
+description: Something on the page is wrong or the monitor does not start
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please do not paste session logs or screenshots of real sessions: they contain your conversations.
+        If you can, reproduce the problem with `python3 run.py --demo`, which shows made-up sessions only.
+        For a security problem, use "Report a vulnerability" on the Security tab instead.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen again
+      placeholder: For example, start with `python3 run.py --demo`, open the Running card, ...
+  - type: input
+    id: monitor
+    attributes:
+      label: Monitor version
+      description: Output of `python3 run.py --version`
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Operating system and Python version
+      placeholder: macOS 15.4, Python 3.12.7
+    validations:
+      required: true
+  - type: input
+    id: tools
+    attributes:
+      label: Claude Code and Codex versions
+      description: Output of `claude --version` and `codex --version`, and whether you use the command line or the desktop app
+  - type: textarea
+    id: log
+    attributes:
+      label: Error output
+      description: What the terminal (or `~/.claude-codex-monitor/monitor.log`) printed. Remove anything private first.
+      render: text

@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "claude-codex-monitor"
+dynamic = ["version"]
+description = "Local dashboard for your Claude Code and Codex sessions: which ones are waiting for you, and how their subtasks are doing."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "sotaof" }]
+keywords = ["claude-code", "codex", "dashboard", "agents", "monitor"]
+requires-python = ">=3.9"
+dependencies = []
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development",
+    "Topic :: Utilities",
+]
+
+[project.scripts]
+claude-codex-monitor = "claude_codex_monitor.server:main"
+
+[project.urls]
+Homepage = "https://github.com/sotaof/claude-codex-monitor"
+Issues = "https://github.com/sotaof/claude-codex-monitor/issues"
+Changelog = "https://github.com/sotaof/claude-codex-monitor/blob/main/CHANGELOG.md"
+
+[tool.setuptools.dynamic]
+version = { attr = "claude_codex_monitor.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+claude_codex_monitor = ["static/*"]

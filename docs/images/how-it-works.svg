@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 540" width="920" height="540" role="img" aria-label="How Claude &amp; Codex Monitor works">
+<title>How Claude &amp; Codex Monitor works</title>
+<style>
+  .bg{fill:#ffffff}.box{fill:#f7f8fa;stroke:#d6dbe2}.opt{fill:#ffffff;stroke:#c3c9d2;stroke-dasharray:5 4}
+  .main{fill:#eef3ff;stroke:#9db5ef}.wait{fill:#fff5e5;stroke:#f0c27c}.ok{fill:#e7f4ec;stroke:#a9d6ba}.idle{fill:#f0f1f3;stroke:#cfd3d9}
+  .t{font:600 14px -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB",sans-serif;fill:#1c2430}
+  .s{font:12.5px -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB",sans-serif;fill:#5d6774}
+  .m{font:12px ui-monospace,"SF Mono",Menlo,Consolas,monospace;fill:#5d6774}
+  .l{font:12px -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB",sans-serif;fill:#2453c7}
+  .n{font:700 12px -apple-system,BlinkMacSystemFont,sans-serif;fill:#ffffff}.dot{fill:#2453c7}
+  .tw{fill:#a8540a}.to{fill:#1b7f45}.ti{fill:#5d6774}
+  .a{stroke:#2453c7;stroke-width:1.6;fill:none;marker-end:url(#arrow)}.ag{stroke:#8b94a0;stroke-width:1.4;fill:none;marker-end:url(#arrowg)}
+  #arrow path{fill:#2453c7}#arrowg path{fill:#8b94a0}
+  @media (prefers-color-scheme: dark){
+    .bg{fill:#161920}.box{fill:#1d222b;stroke:#323946}.opt{fill:#161920;stroke:#4a515c}.main{fill:rgba(122,162,255,.12);stroke:#4d6fc4}
+    .wait{fill:rgba(242,180,90,.12);stroke:#8f6427}.ok{fill:rgba(95,208,140,.11);stroke:#2f8a57}.idle{fill:#1d222b;stroke:#3a404b}
+    .t{fill:#e6e8ec}.s,.m{fill:#a2abb6}.l{fill:#86a6ff}.dot{fill:#4d6fc4}.tw{fill:#f2b45a}.to{fill:#5fd08c}.ti{fill:#a2abb6}
+    .a{stroke:#86a6ff}#arrow path{fill:#86a6ff}.ag{stroke:#737d89}#arrowg path{fill:#737d89}
+  }
+</style>
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z"/></marker>
+  <marker id="arrowg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z"/></marker>
+</defs>
+<rect width="920" height="540" rx="14" class="bg"/>
+<rect x="20" y="40" width="232" height="106" rx="10" class="box"/>
+<text x="34" y="64" class="t" text-anchor="start">Claude Code</text>
+<text x="34" y="82" class="s" text-anchor="start">command line and desktop app</text>
+<text x="34" y="100" class="m" text-anchor="start">~/.claude/projects/</text>
+<text x="34" y="118" class="m" text-anchor="start">~/.claude/sessions/</text>
+<path class="a" d="M254 93 H336"/>
+<text x="295" y="86" class="l" text-anchor="middle">session logs</text>
+<rect x="20" y="162" width="232" height="106" rx="10" class="box"/>
+<text x="34" y="186" class="t" text-anchor="start">Codex</text>
+<text x="34" y="204" class="s" text-anchor="start">command line and desktop app</text>
+<text x="34" y="222" class="m" text-anchor="start">~/.codex/sessions/</text>
+<text x="34" y="240" class="m" text-anchor="start">~/.codex/session_index.jsonl</text>
+<path class="a" d="M254 215 H336"/>
+<text x="295" y="208" class="l" text-anchor="middle">session logs</text>
+<rect x="20" y="284" width="232" height="106" rx="10" class="opt"/>
+<text x="34" y="308" class="t" text-anchor="start">Claude desktop app, extras</text>
+<text x="34" y="326" class="s" text-anchor="start">optional · macOS only</text>
+<text x="34" y="344" class="s" text-anchor="start">new-session cards and the</text>
+<text x="34" y="362" class="s" text-anchor="start">IDs that “Open in Claude” uses</text>
+<path class="a" d="M254 337 H336"/>
+<text x="295" y="330" class="l" text-anchor="middle">cards, IDs</text>
+<rect x="340" y="40" width="270" height="350" rx="12" class="main"/>
+<text x="475" y="66" class="t" text-anchor="middle">claude-codex-monitor</text>
+<text x="475" y="84" class="s" text-anchor="middle">on your computer, read-only</text>
+<circle cx="368" cy="124" r="10" class="dot"/><text x="368" y="128" class="n" text-anchor="middle">1</text>
+<text x="388" y="128" class="s" text-anchor="start">Reads new lines every 3 s</text>
+<circle cx="368" cy="168" r="10" class="dot"/><text x="368" y="172" class="n" text-anchor="middle">2</text>
+<text x="388" y="172" class="s" text-anchor="start">Works out each session’s state</text>
+<circle cx="368" cy="212" r="10" class="dot"/><text x="368" y="216" class="n" text-anchor="middle">3</text>
+<text x="388" y="216" class="s" text-anchor="start">Finds what it is waiting for</text>
+<circle cx="368" cy="256" r="10" class="dot"/><text x="368" y="260" class="n" text-anchor="middle">4</text>
+<text x="388" y="260" class="s" text-anchor="start">Lays subtasks on a timeline</text>
+<text x="475" y="344" class="s" text-anchor="middle">Saves dismissed sessions and</text>
+<text x="475" y="362" class="s" text-anchor="middle">summaries in ~/.claude-codex-monitor/</text>
+<rect x="690" y="164" width="210" height="96" rx="10" class="box"/>
+<text x="704" y="188" class="t" text-anchor="start">Your browser</text>
+<text x="704" y="206" class="m" text-anchor="start">http://127.0.0.1:8767</text>
+<text x="704" y="224" class="s" text-anchor="start">only this computer can open it</text>
+<path class="a" d="M612 212 H686"/>
+<text x="650" y="205" class="l" text-anchor="middle">list, details</text>
+<rect x="200" y="462" width="550" height="58" rx="10" class="opt"/>
+<text x="475" y="484" class="t" text-anchor="middle">Model summary · on by default, can be turned off</text>
+<text x="475" y="502" class="s" text-anchor="middle">local claude, else local codex · or an OpenAI / Anthropic API</text>
+<path class="ag" d="M440 392 V458"/><path class="ag" d="M510 460 V394"/>
+<text x="432" y="430" class="s" text-anchor="end">masked recent messages</text>
+<text x="518" y="430" class="s" text-anchor="start">what it is waiting for</text>
+</svg>
