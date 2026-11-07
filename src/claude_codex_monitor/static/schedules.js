@@ -13,7 +13,8 @@ window.Schedules = (() => {
   const path = task => '#/schedules/' + task.source + '/' + encodeURIComponent(task.id);
   const sessionPath = run => '#/s/' + encodeURIComponent(run.session_key);
   const time = ts => ts == null ? '—' : fullLabel(ts);
-  const age = ts => ts == null ? '—' : t('time.ago', dur(Math.max(0, Date.now() / 1000 - ts)));
+  // Within a day: how long ago; older: the date and time (the same rule on every page)
+  const age = ts => ts == null ? '—' : Date.now() / 1000 - ts < 86400 ? t('time.ago', dur(Math.max(0, Date.now() / 1000 - ts))) : md(ts) + ' ' + hm(ts);
   const started = run => run.before_monitoring ? t('schedule.before_monitoring') : time(run.start);
   const elapsed = run => run.duration_unknown || run.start == null || run.status === 'miss' || run.status === 'unknown' ? '—' :
     run.end != null ? dur(Math.max(0, run.end - run.start)) :
@@ -102,7 +103,9 @@ window.Schedules = (() => {
       }).join('') + note();
   }
   function list() {
-    const tasks = data.tasks.filter(task => source === 'all' || task.source === source);
+    const q = (query || '').toLowerCase();
+    const found = task => !q || (task.title + ' ' + task.id + ' ' + (task.raw || '')).toLowerCase().includes(q);
+    const tasks = data.tasks.filter(task => (source === 'all' || task.source === source) && found(task));
     const services = source === 'all' || source === 'launchd' ? data.services : [];
     const count = g => g === 'svc' ? services.length : tasks.filter(task => task.group === g).length;
     const ctx = {
@@ -112,10 +115,11 @@ window.Schedules = (() => {
         new Date(task.next_run * 1000).toDateString() === new Date().toDateString()).length),
       off: t('schedule.off_context'), svc: t('schedule.service_context')
     };
-    let html = `<div class="tools"><span class="lb">${t('schedule.source')}</span><div class="sg">${['all', 'launchd', 'claude', 'codex'].map(s =>
+    // The same toolbar as the session list: search on the left; source, sort and when it was updated on the right
+    let html = `<div class="tools"><label class="search">${ICON.search}<input id="search" placeholder="${t('schedule.search')}" aria-label="${t('schedule.search')}" value="${esc(query)}"><kbd>/</kbd></label><span class="sp"></span>
+      <div class="sg" aria-label="${t('schedule.source')}">${['all', 'launchd', 'claude', 'codex'].map(s =>
       `<button data-schedule-source="${s}" class="${source === s ? 'on' : ''}" aria-pressed="${source === s}">${s === 'all' ? t('common.all') : sourceName(s)} <span class="faint">${s === 'all' ? data.tasks.length : data.tasks.filter(task => task.source === s).length}</span></button>`).join('')}</div>
-      <span class="sp"></span><span class="lb">${t('schedule.sort')}</span><div class="sg">${['recent', 'next'].map(s =>
-      `<button data-schedule-sort="${s}" class="${sort === s ? 'on' : ''}" aria-pressed="${sort === s}">${t('schedule.sort_' + s)}</button>`).join('')}</div><span class="faint">${t('schedule.refresh', 45)}</span></div>
+      ${sortSeg('data-schedule-sort', sort, ['recent', 'next'].map(s => [s, t('schedule.sort_' + s)]))}<span title="${esc(t('schedule.refresh', 45))}">${updatedHtml(data.now)}</span></div>
       <div class="stcards">${groups.map(g => `<button class="scard k-${g} ${card === g ? 'on' : ''}" data-schedule-card="${g}" aria-pressed="${card === g}">
         <span class="lb"><span class="dot d-${g === 'svc' ? 'off' : g}"></span>${t('schedule.group.' + g)}</span>
         <span class="n">${count(g)}</span><span class="ctx" title="${esc(ctx[g])}">${esc(ctx[g])}</span></button>`).join('')}</div>`;
@@ -123,7 +127,7 @@ window.Schedules = (() => {
     const shown = tasks.filter(task => task.group === card);
     shown.sort((a, b) => sort === 'next' ? (a.next_run == null ? Infinity : a.next_run) - (b.next_run == null ? Infinity : b.next_run) :
       ((b.runs[0] || {}).start || b.last_run || 0) - ((a.runs[0] || {}).start || a.last_run || 0));
-    html += `<div class="listhead">${t('schedule.lead.' + card)}<span class="sp"></span><span class="faint">${t('schedule.count', shown.length)}</span></div>`;
+    html += `<div class="listhead"><span>${t('schedule.group.' + card)} · ${t('schedule.count', shown.length)} · ${t('schedule.sort_note_' + sort)}</span><span class="faint">${t('schedule.lead.' + card)}</span></div>`;
     if (!shown.length) return html + `<div class="empty">${t('schedule.empty.' + card)}</div>`;
     html += `<div class="scols">${['source', 'name', 'schedule', 'last', 'next', 'history14'].map(c => `<span>${t('schedule.' + c)}</span>`).join('')}</div>` +
       shown.map(row).join('') + `<div class="legend">${results.map(r => `<span><i class="b-${r}"></i>${statusName(r)}</span>`).join('')}<span><i class="b-stuck handled">✓</i>${t('schedule.handled')}</span></div>`;

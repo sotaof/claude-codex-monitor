@@ -1,7 +1,8 @@
 .top .nav{display:flex;gap:4px;align-self:stretch;align-items:center}
 .nav a{border-bottom:2px solid transparent;padding:8px 10px;color:var(--muted);text-decoration:none;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 .nav a.on{color:var(--ink);font-weight:600;border-bottom-color:var(--ink)}
-.nav .badge{background:var(--fail);color:var(--surface);font-size:11px;font-weight:700;border-radius:999px;padding:0 6px;line-height:17px}
+.nav .badge{color:var(--faint);font-size:12px;font-weight:600;font-variant-numeric:tabular-nums}      /* a quiet count, not a red alert */
+.nav a.on .badge{color:var(--muted)}
 .schedules{min-width:0}
 .schedules .tools .lb{font-size:12.5px;color:var(--faint)}
 .schedules .sg{flex-wrap:wrap;max-width:100%}

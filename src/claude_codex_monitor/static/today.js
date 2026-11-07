@@ -87,8 +87,10 @@ window.Today = (() => {
   function renderToday() {
     if (error && !data) return `<div class="empty">${esc(tm(error))}</div>`;
     if (!data) return `<div class="loading">${t('loading.detail')}</div>`;
+    // Sessions close here as on the session list (a new message brings them back)
+    const close = a => `<span class="tacts"><button class="tbtn" data-today-close="${esc(a.key)}" title="${esc(t('list.dismiss_hint'))}">${t('common.close')}</button></span>`;
     const sessions = agents().sort((a, b) => (b.since || 0) - (a.since || 0)).map(a => line('#/s/' + encodeURIComponent(a.key),
-      `<span class="cl c-${esc(a.client)}">${a.client === 'claude' ? 'Claude' : 'Codex'}</span>`, a.title, esc(tm(a.text) || ago(a.since))));
+      `<span class="cl c-${esc(a.client)}">${a.client === 'claude' ? 'Claude' : 'Codex'}</span>`, a.title, esc(tm(a.text) || ago(a.since)), close(a)));
     const tasks = data.schedules.map(s => line('#/schedules/' + s.source + '/' + encodeURIComponent(s.id),
       `<span class="cl c-${esc(s.source)}">${esc(t('schedule.source.' + s.source))}</span>`, s.title,
       esc(t('schedule.result.' + s.status) + (s.summary ? ' · ' + tm(s.summary) : ''))));
@@ -147,7 +149,18 @@ window.Today = (() => {
       catch (e) { toast(e.userMessage || e.message); }
     }
   }
+  async function closeSession(key) {
+    try {
+      await post('/api/dismiss', [key]);
+      await refresh(true); window.render();
+      toast(() => t('toast.closed'), async () => {
+        try { await post('/api/restore', [key]); await refresh(true); window.render(); } catch (e) { toast(e.userMessage || e.message); }
+      });
+    } catch (e) { toast(e.userMessage || e.message); }
+  }
   function click(event) {
+    const c = event.target.closest('[data-today-close]');
+    if (c) { closeSession(c.dataset.todayClose); return true; }
     const b = event.target.closest('[data-today-act]');
     if (b) { itemAction(b.dataset.todayKey, b.dataset.todayAct); return true; }
     const rt = route(location.hash);

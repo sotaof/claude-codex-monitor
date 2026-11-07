@@ -96,6 +96,11 @@ a{color:var(--run)}
 .brand h1{margin:0;font-size:18px;letter-spacing:-.01em}
 .tools .tmeta{color:var(--muted);font-size:13px;white-space:nowrap}
 .tset{display:flex;align-items:center;gap:8px;flex:none}
+.tupd{color:var(--faint);font-size:12.5px;white-space:nowrap}
+/* Rows that open a page show ›, rows that expand in place show ▾ */
+.row,.schedules .srow{position:relative}
+.row::after,.schedules .srow[data-schedule]::after{content:'›';position:absolute;right:8px;top:12px;color:var(--faint);font-size:16px;line-height:1}
+.row{padding-right:30px}
 @media (max-width:1280px){                 /* four views and three settings: the menus show icons only */
   .ddbtn>span,.ddbtn .chev{display:none}
   .ddbtn{padding:5px 7px}
@@ -172,8 +177,8 @@ a{color:var(--run)}
 .when{font-size:12.5px;color:var(--faint)}
 .r-wait .when{color:var(--wait);font-weight:600}.r-wait .when.old{color:var(--faint);font-weight:400}
 .r-run .when{color:var(--run)}
-.x{width:28px;height:28px;border-radius:6px;border:1px solid transparent;background:none;color:var(--faint);font-size:16px;line-height:1;opacity:0}
-.row:hover .x,.x:focus-visible{opacity:1}
+.x{height:24px;padding:0 8px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--muted);font-size:12px;line-height:1}
+.row:hover .x,.x:focus-visible{color:var(--ink)}
 .x:hover{border-color:var(--line);background:var(--surface);color:var(--ink)}
 @media (hover:none){.x{opacity:1}}
 .morerow{padding:10px 22px 14px 80px;font-size:13px}
@@ -425,6 +430,7 @@ function num(n) {
 // ---------- State ----------
 let snap = null, detail = null, detailKey = null;
 let days = Number(store('days') || 2), client = store('client') || 'all', status = null, query = '';
+let order = store('order') === 'old' ? 'old' : 'new';
 let statusChosen = false;
 const localDismissed = new Set(), localRestored = new Set();
 const openTasks = new Set(), openMore = new Set();
@@ -518,6 +524,13 @@ function notifyChanges() {
 
 // ---------- Rendering ----------
 function render() {
+  // Typing in a page's search box redraws the page: keep the box focused and the caret where it was
+  const keepFocus = document.activeElement && document.activeElement.id === 'search';
+  const caret = keepFocus ? document.activeElement.selectionStart : 0;
+  renderPage();
+  if (keepFocus && $('search')) { const s = $('search'); s.focus(); s.setSelectionRange(caret, caret); }
+}
+function renderPage() {
   document.documentElement.lang = lang;
   staticText();
   renderError();
@@ -547,8 +560,8 @@ function render() {
   renderList();
 }
 
-function topBar() {
 // The header holds the title, the views and the settings only; each page says its own range and counts
+function topBar() {
   return `<div class="top">${brand()}${navBar(route())}<span class="sp"></span>${settingsHtml()}</div>`;
 }
 // Views: Today (the home page), sessions, scheduled tasks, then the tabs source plugins add
@@ -558,16 +571,20 @@ function navBar(rt) {
     link('#/', rt.name === 'list' || rt.name === 'detail', t('schedule.sessions')) + Schedules.navLink(rt.name === 'schedules') +
     Today.extLinks(rt) + '</nav>';
 }
-function toolBar() {
-function sessionsMeta() {
-  const vis = ((snap && snap.rows) || []).filter(r => !isDismissed(r) && inRange(r));
-  const cc = vis.filter(r => r.client === 'claude').length, xc = vis.length - cc;
-  const dayName = span() === 0 ? t('time.today') : t('header.last_days', span() + 1);
-  return `<span class="tmeta">${esc(t('header.clients', dayName, cc, xc))}</span>`;
+// Every list page: search on the left; filters, then sort, then when it was updated on the right
+function updatedHtml(ts) {
+  return ts ? `<span class="tupd" title="${esc(fullLabel(ts))}">${esc(t('common.updated', dur(Math.max(0, Date.now() / 1000 - ts))))}</span>` : '';
 }
-  return `<div class="tools"><label class="search">${ICON.search}<input id="search" placeholder="${t('search.placeholder')}" aria-label="${t('search.label')}" value="${esc(query)}"><kbd>/</kbd></label><span class="sp"></span>${sessionsMeta()}
-    <div class="sg" id="clientSeg">${[['all', t('common.all')], ['claude', 'Claude'], ['codex', 'Codex']].map(([c, n]) => `<button data-client="${c}" class="${client === c ? 'on' : ''}">${n}</button>`).join('')}</div>
-    <div class="sg" id="dateSeg">${dateOptions().map(d => `<button data-days="${d}" class="${span() === d ? 'on' : ''}">${d ? t('header.days', d + 1) : t('time.today')}</button>`).join('')}</div></div>`;
+function sortSeg(attr, current, options) {
+  return `<div class="sg" aria-label="${t('schedule.sort')}">${options.map(([v, n]) => `<button ${attr}="${v}" class="${current === v ? 'on' : ''}" aria-pressed="${current === v}">${n}</button>`).join('')}</div>`;
+}
+function toolBar() {
+  const vis = ((snap && snap.rows) || []).filter(r => !isDismissed(r) && inRange(r));
+  const n = c => c === 'all' ? vis.length : vis.filter(r => r.client === c).length;
+  return `<div class="tools"><label class="search">${ICON.search}<input id="search" placeholder="${t('search.placeholder')}" aria-label="${t('search.label')}" value="${esc(query)}"><kbd>/</kbd></label><span class="sp"></span>
+    <div class="sg" id="clientSeg">${[['all', t('common.all')], ['claude', 'Claude'], ['codex', 'Codex']].map(([c, name]) => `<button data-client="${c}" class="${client === c ? 'on' : ''}">${name} <span class="faint">${n(c)}</span></button>`).join('')}</div>
+    <div class="sg" id="dateSeg">${dateOptions().map(d => `<button data-days="${d}" class="${span() === d ? 'on' : ''}">${d ? t('header.days', d + 1) : t('time.today')}</button>`).join('')}</div>
+    ${sortSeg('data-order', order, [['new', t('sort.newest')], ['old', t('sort.oldest')]])}${updatedHtml(snap && snap.now)}</div>`;
 }
 
 // Opened without the access token: say how to open it with the token, show nothing else
@@ -607,22 +624,21 @@ function renderList() {
     return `<button class="scard k-${g.k} ${status === g.k ? 'on' : ''} ${v.length ? '' : 'zero'}" data-st="${g.k}" aria-pressed="${status === g.k}">
       <span class="lb"><span class="dot ${g.dot}"></span>${t('status.' + g.k)}</span><span class="n">${v.length}</span><span class="ctx">${esc(ctx[g.k](v))}</span></button>`;
   }).join('');
-  let rows = by(status);
+  let rows = by(status).slice();
   if (status === 'wait') rows.sort((a, b) => (b.wait_since || 0) - (a.wait_since || 0));
+  else rows.sort((a, b) => (b.last_ts || 0) - (a.last_ts || 0));
+  if (order === 'old') rows.reverse();
   const g = ST.find(x => x.k === status);
   const limit = openMore.has('list-' + status) ? 9999 : 40;
-  const sortNote = status === 'off' ? t('list.sort_off') : status === 'wait' ? t('list.sort_wait') : t('list.sort_recent');
+  const sortNote = order === 'old' ? t('sort.oldest_first') : t('sort.newest_first');
   const action = status === 'ok' && rows.length ? `<button class="linkbtn" id="closeAllDone">${t('list.dismiss_all')}</button>`
     : status === 'off' && rows.length ? `<button class="linkbtn" id="restoreAll">${t('closed.restore_all')}</button>` : '';
-  const head = `<div class="listhead"><span>${t('status.' + g.k)} · ${t('list.session_count', rows.length)} · ${sortNote}</span><span class="sp"></span>${action}</div>`;
+  const head = `<div class="listhead"><span>${t('status.' + g.k)} · ${t('list.session_count', rows.length)} · ${sortNote}</span>${status === 'off' ? `<span class="faint">${t('list.sort_off')}</span>` : ''}<span class="sp"></span>${action}</div>`;
   const one = status === 'off' ? closedRowHtml : r => rowHtml(r, now);
   const body = rows.length ? rows.slice(0, limit).map(one).join('') +
       (rows.length > limit ? `<div class="morerow"><button data-more="list-${status}">${t('list.show_more', rows.length - limit)}</button></div>` : '')
     : `<div class="empty">${status === 'off' ? t('closed.empty') : t('list.empty.' + g.k)}</div>`;
-  const keepFocus = document.activeElement && document.activeElement.id === 'search';
-  const caret = keepFocus ? document.activeElement.selectionStart : 0;
   $('view').innerHTML = topBar() + toolBar() + summaryHtml() + `<div class="stcards">${cards}</div>` + head + `<div id="rows">${body}</div>`;
-  if (keepFocus) { const s = $('search'); s.focus(); s.setSelectionRange(caret, caret); }
 }
 
 // Model summaries: on by default; the tag on the title row opens a panel to turn them off, or back on
@@ -744,7 +760,7 @@ function rowHtml(r, now) {
   return `<div class="row r-${r.status}" data-key="${esc(r.key)}" tabindex="0">
     <span class="rail"></span><span class="cl c-${r.client}">${r.client === 'claude' ? 'Claude' : 'Codex'}</span>
     <div class="main">${body}</div>
-    <div class="right"><span class="when ${cls}">${esc(when)}</span><button class="x" data-close="${esc(r.key)}" aria-label="${t('list.dismiss')}" title="${t('list.dismiss_hint')}">×</button></div></div>`;
+    <div class="right"><span class="when ${cls}">${esc(when)}</span><button class="x" data-close="${esc(r.key)}" aria-label="${t('list.dismiss')}" title="${t('list.dismiss_hint')}">${t('common.close')}</button></div></div>`;
 }
 
 // A dismissed session in the Dismissed card's list: shown as it was, with a way back
@@ -1054,6 +1070,8 @@ document.addEventListener('click', e => {
   if (ds) { days = Number(ds.dataset.days); store('days', days); render(); return; }
   const cs = el.closest('[data-client]');
   if (cs) { client = cs.dataset.client; store('client', client); render(); return; }
+  const od = el.closest('[data-order]');
+  if (od) { order = od.dataset.order; store('order', order); render(); return; }
   const more = el.closest('[data-more]');
   if (more) { const k = more.dataset.more; openMore.has(k) ? openMore.delete(k) : openMore.add(k); render(); return; }
   const tf = el.closest('[data-tf]');
