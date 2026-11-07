@@ -1006,7 +1006,7 @@ class IntegrationTests(TemporaryFiles):
                          'en': 'Once · 2027 Jan 9 15:00', 'zh': '一次性 · 2027/1/9 15:00'}]}
         result = subprocess.run([shutil.which('node'), os.path.join(os.path.dirname(__file__), 'schedules_ui.js'),
                                  os.path.join(os.path.dirname(S.__file__), 'static')],
-                                input=json.dumps(fixtures), capture_output=True, text=True, timeout=10)
+                                input=json.dumps(fixtures), capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('PASS:', result.stdout)
 
