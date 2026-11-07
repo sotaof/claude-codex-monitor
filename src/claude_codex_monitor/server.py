@@ -235,6 +235,20 @@ class Monitor:
             return None
         return {'key': 'claude:' + parent if parent else None, 'title': None, 'side': side}
 
+    def drop_old_logs(self, rows):
+        """A desktop session can move on to a new log (after compacting, say) and leave its first one behind. The desktop
+        record local_<first log ID> then names the new log; keep the new log's row and drop the old one, so the session
+        shows once. The old row stays when the new log is not in the list."""
+        keys = {r['key'] for r in rows}
+        out = []
+        for r in rows:
+            sid = r['key'][len('claude:'):] if r['key'].startswith('claude:') else None
+            now_in = sid and self.local_to_cli.get('local_' + sid)
+            if now_in and now_in != sid and 'claude:' + now_in in keys:
+                continue
+            out.append(r)
+        return out
+
     def name_forks(self, rows):
         """Give each forked session's row the title of the session it came from."""
         titles = {r['key']: r['title'] for r in rows}
@@ -424,6 +438,7 @@ class Monitor:
                 r = self.codex_row(f, names, now)
                 if r:
                     rows.append(r)
+        rows = self.drop_old_logs(rows)
         self.name_forks(rows)
         rows.sort(key=lambda r: r['last_ts'] or 0, reverse=True)
         self.snapshot = {'ready': True, 'now': now, 'rows': rows, 'progress': prog,
@@ -867,6 +882,10 @@ class Monitor:
 
     def detail(self, key):
         row = next((r for r in self.snapshot.get('rows', []) if r['key'] == key), None)
+        moved = key.startswith('claude:') and self.local_to_cli.get('local_' + key[len('claude:'):])
+        if not row and moved and moved != key[len('claude:'):]:
+            key = 'claude:' + moved           # a link to a log the session has moved on from opens the session as it is now
+            row = next((r for r in self.snapshot.get('rows', []) if r['key'] == key), None)
         path = self.paths.get(key)
         if not row and self.schedule_collector is not None:
             archived = self.schedule_collector.session_paths.get(key)

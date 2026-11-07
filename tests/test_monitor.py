@@ -419,6 +419,14 @@ class Hardening(unittest.TestCase):
                   'message': {'content': [{'type': 'text', 'text': 'working'}]}}, b'')
         self.assertEqual(sub.last_ts, '2026-01-01T00:00:00.000Z')
 
+    def test_session_that_moved_to_a_new_log_shows_once(self):
+        # The desktop record local_old says the session now writes to log new; old's row goes when new's row is there.
+        mon = mock.Mock(local_to_cli={'local_old': 'new', 'local_gone': 'elsewhere', 'local_same': 'same'})
+        keys = lambda rows: [r['key'] for r in S.Monitor.drop_old_logs(mon, [{'key': k} for k in rows])]
+        self.assertEqual(keys(['claude:old', 'claude:new', 'codex:old']), ['claude:new', 'codex:old'])
+        self.assertEqual(keys(['claude:gone']), ['claude:gone'])          # the new log is not in the list: keep the old
+        self.assertEqual(keys(['claude:same']), ['claude:same'])
+
     def test_side_chat_on_a_new_log_still_names_its_parent(self):
         # After compacting, a side chat writes a new log with no copied lines; the desktop record still names the parent.
         mon = mock.Mock(side={'new-log': 'local_parent', 'other': ''}, local_to_cli={'local_parent': 'parent-id'})
