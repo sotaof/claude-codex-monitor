@@ -10,7 +10,8 @@ window.Today = (() => {
   const loaded = new Set(), busy = new Set();
   const ACT_KINDS = ['reply', 'approve', 'deliver', 'alert'];        // you have to do something
   const kindName = k => t('today.kind.' + k);
-  const ago = ts => ts ? t('time.ago', dur(Math.max(0, Date.now() / 1000 - ts))) : '';
+  // Within a day: how long ago; older: the date and time, which is easier to place than "4 days 2 hours ago"
+  const ago = ts => !ts ? '' : Date.now() / 1000 - ts < 86400 ? t('time.ago', dur(Math.max(0, Date.now() / 1000 - ts))) : md(ts) + ' ' + hm(ts);
   const isOpen = item => item.open && !item.handled;
   const SHOW = 8;                                     // per column; the rest is one click away
   // Sessions: the same last 3 days the session list shows by default; older waits are usually abandoned
@@ -68,11 +69,15 @@ window.Today = (() => {
     return `<div class="tline">${chip}<span class="tmain">${href ? `<a href="${href}">${esc(title)}</a>` : `<b>${esc(title)}</b>`}
       ${sub ? `<span class="tsub">${sub}</span>` : ''}</span>${actions || ''}</div>`;
   }
-  function itemLine(item) {
+  // opts (for source tabs): href to open, kindMenu to make the kind tag a button, extra html under the line
+  function itemLine(item, opts) {
+    opts = opts || {};
     const sub = [item.who, item.where, item.due ? t('today.due', fullLabel(item.due)) : ago(item.since)].filter(Boolean).map(esc).join(' · ');
+    const tag = opts.kindMenu ? `<button class="tk k-${item.kind} tkbtn" data-kind-menu="${esc(item.key)}" title="${t('today.change_kind')}">${esc(kindName(item.kind))} ▾</button>`
+      : `<span class="tk k-${item.kind}">${esc(kindName(item.kind))}</span>`;
     const acts = item.handled ? '' : `<span class="tacts">${['done', 'later', 'skip'].map(a =>
       `<button class="tbtn${a === 'done' ? ' pri' : ''}" data-today-act="${a}" data-today-key="${esc(item.key)}"${busy.has(item.key) ? ' disabled' : ''}>${t('today.act.' + (a === 'done' && item.kind === 'waiting' ? 'received' : a))}</button>`).join('')}</span>`;
-    return line(item.url, `<span class="tk k-${item.kind}">${esc(kindName(item.kind))}</span>`, item.title || item.text, sub, acts);
+    return line(opts.href || item.url, tag, item.title || item.text, sub + (opts.extra || ''), acts);
   }
   function column(title, lines, more) {
     const rest = lines.length - SHOW;
@@ -95,10 +100,16 @@ window.Today = (() => {
       const act = open.filter(i => ACT_KINDS.includes(i.kind));
       others.push(...open.filter(i => !ACT_KINDS.includes(i.kind) && (i.kind !== 'info' || (i.since || 0) >= data.window.start)));
       const err = s.error ? `<div class="terr">${esc(t('today.source_error', label(s), s.error))}</div>` : '';
-      cols += column(esc(label(s)) + ' · ' + t('today.needs_you'), act.map(itemLine),
+      // A source with a tab: the title opens that item there, expanded
+      const lineOf = i => itemLine(i, s.tab ? {href: '#/x/' + s.name + '/' + encodeURIComponent(i.key)} : {});
+      cols += column(esc(label(s)) + ' · ' + t('today.needs_you'), act.map(lineOf),
         err + (s.tab ? `<a class="tmore" href="#/x/${esc(s.name)}">${t('today.go', esc(label(s)))}</a>` : ''));
     }
-    if (data.sources.length) cols += column(t('today.waiting_info'), others.map(itemLine));
+    const otherLine = i => {
+      const s = data.sources.find(x => x.name === i.source);
+      return itemLine(i, s && s.tab ? {href: '#/x/' + s.name + '/' + encodeURIComponent(i.key)} : {});
+    };
+    if (data.sources.length) cols += column(t('today.waiting_info'), others.map(otherLine));
     const errs = (data.source_errors || []).map(e => `<div class="terr">${esc(t('today.source_error', e.name, e.error))}</div>`).join('');
     return `<div class="tday"><p class="tlead">${t('today.lead', needsYou())}</p>${errs}<div class="tgrid">${cols}</div></div>`;
   }
@@ -124,13 +135,24 @@ window.Today = (() => {
     busy.add(key); window.render();
     try {
       await getJson('/api/items', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({key, action, until})});
+      await tell(key, action);
       await refresh(true);
       toast(() => t('today.toast.' + action), action === 'restore' ? null : async () => {
-        try { await getJson('/api/items', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({key, action: 'restore'})}); await refresh(true); window.render(); }
-        catch (e) { toast(e.userMessage || e.message); }
+        try {
+          await getJson('/api/items', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({key, action: 'restore'})});
+          await tell(key, 'restore'); await refresh(true); window.render();
+        } catch (e) { toast(e.userMessage || e.message); }
       });
     } catch (e) { toast(e.userMessage || e.message); }
     finally { busy.delete(key); window.render(); }
+  }
+  // Let the item's source know (for example to learn from "not a to-do"); its tab script may not be loaded yet
+  async function tell(key, action) {
+    const name = key.split(':')[0], tab = window.CCMTabs.get(name);
+    if (tab && tab.onAction) {
+      try { await tab.onAction(key, action, {api: (path, opt) => getJson('/api/ext/' + name + '/' + path, opt)}); }
+      catch (e) { toast(e.userMessage || e.message); }
+    }
   }
   function click(event) {
     const b = event.target.closest('[data-today-act]');
