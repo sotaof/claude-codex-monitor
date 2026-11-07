@@ -1,12 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <!-- Personal workbench: three sources (sessions, scheduled tasks, chats) land in one tray -->
   <style>
     .bg{fill:#1c2430}
     @media (prefers-color-scheme: dark){.bg{fill:#2c3644;stroke:#56606e;stroke-width:1}}
   </style>
   <rect class="bg" x=".5" y=".5" width="31" height="31" rx="7.5"/>
-  <rect x="8" y="6" width="16" height="3.6" rx="1.8" fill="#f2b45a"/>
-  <rect x="10" y="11.4" width="12" height="3.6" rx="1.8" fill="#7aa2ff"/>
-  <rect x="12" y="16.8" width="8" height="3.6" rx="1.8" fill="#5fd08c"/>
-  <path d="M6.5 19.5v4.2a2.8 2.8 0 0 0 2.8 2.8h13.4a2.8 2.8 0 0 0 2.8-2.8v-4.2" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="9" cy="8" r="3" fill="#f2b45a"/>
+  <rect x="14" y="6" width="12" height="4" rx="2" fill="#fff"/>
+  <circle cx="9" cy="16" r="3" fill="#7aa2ff"/>
+  <rect x="14" y="14" width="8" height="4" rx="2" fill="#fff" opacity=".5"/>
+  <circle cx="9" cy="24" r="3" fill="#5fd08c"/>
+  <rect x="14" y="22" width="10" height="4" rx="2" fill="#fff" opacity=".5"/>
 </svg>
