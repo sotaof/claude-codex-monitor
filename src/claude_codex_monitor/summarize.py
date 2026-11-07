@@ -320,7 +320,8 @@ class CursorCli(CliBackend):
     exe = 'cursor-agent'
 
     def complete(self, system, prompt, timeout):
-        args = [self.path, '-p', '--output-format', 'text', '--mode', 'ask'] + (['--model', self.model] if self.model else [])
+        # --trust: it runs in our own empty folder (work_dir), so there is nothing in it to distrust
+        args = [self.path, '-p', '--output-format', 'text', '--mode', 'ask', '--trust'] + (['--model', self.model] if self.model else [])
         out = self._run(args + [system + '\n\n' + prompt], None, timeout)
         if 'Authentication required' in out:
             raise RuntimeError('cursor-agent is not signed in: run `cursor-agent login`')

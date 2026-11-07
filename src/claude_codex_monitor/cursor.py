@@ -5,8 +5,9 @@ preceded by a <timestamp>), an assistant message (text and tool_use blocks), or 
 Assistant lines carry no time of their own: they get the time of the user message they answer, and the last one gets
 the file's modification time.
 
-The command line agent keeps its chats elsewhere (~/.cursor/chats/*/store.db, a content-addressed store); those are
-not read.
+Interactive chats of the command line agent are kept elsewhere (~/.cursor/chats/*/store.db, a content-addressed
+store) and are not read. Its print mode (cursor-agent -p) does write a transcript here, under the folder it ran in:
+the ones from this monitor's own work folders (see OWN_WORK_RE) are skipped, so its summaries never show as chats.
 """
 import datetime as dt
 import glob
