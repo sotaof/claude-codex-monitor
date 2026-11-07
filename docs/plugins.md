@@ -78,6 +78,21 @@ session summaries included, also has a switch of its own in the same panel, on b
 source per day and shown there. `gate.complete` raises `ModelOff` when it is switched off; a source should then
 fall back to rules. A source without `model_use` gets no gate.
 
+## Buttons of your own
+
+An item can replace Done / Not needed with its own buttons, shown the same way on the Today page and in your tab:
+
+```python
+{'key': 'msg-42', 'kind': 'confirm', 'title': '…',
+ 'actions': [{'id': 'yes', 'label': {'en': 'Needs me', 'zh': '要处理'}, 'primary': True},
+             {'id': 'no', 'label': {'en': 'Not needed', 'zh': '不用处理'}}]}
+```
+
+A press calls `act(key, action)` on your source (the key without the `name:` prefix). Return `None` for an unknown
+action, or a dict with any of: `core` (`done`, `skip` or `restore`, applied to the item by the monitor), `undo` (the
+action id the toast's Undo button sends back) and `done` (the toast text). The monitor polls the source again right
+after, so the page shows the result at once. At most four buttons; ids are lower case letters, digits, `-` and `_`.
+
 ## What counts as "today"
 
 The Today page covers the day from midnight until **04:00 the next morning**, and a new day starts only at 04:00.

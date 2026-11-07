@@ -80,7 +80,11 @@ window.Today = (() => {
   let order = 'old';                                  // the longest-waiting first: what to do next
   const unfolded = new Set();
   const LIST = 15;
+  // The source's own buttons when it gives them, otherwise Done / Not needed
+  const btnLabel = a => a.label[document.documentElement.lang === 'zh' ? 'zh' : 'en'] || a.label.en || a.label.zh || a.id;
   function actsOf(item) {
+    if (!item.handled && item.actions) return `<span class="tacts">${item.actions.map(a =>
+      `<button class="tbtn${a.primary ? ' pri' : ''}" data-today-custom="${esc(a.id)}" data-today-key="${esc(item.key)}"${busy.has(item.key) ? ' disabled' : ''}>${esc(btnLabel(a))}</button>`).join('')}</span>`;
     return item.handled ? '' : `<span class="tacts">${['done', 'skip'].map(a =>
       `<button class="tbtn${a === 'done' ? ' pri' : ''}" data-today-act="${a}" data-today-key="${esc(item.key)}"${busy.has(item.key) ? ' disabled' : ''}>${t('today.act.' + (a === 'done' && item.kind === 'waiting' ? 'received' : a))}</button>`).join('')}</span>`;
   }
@@ -169,6 +173,18 @@ window.Today = (() => {
       catch (e) { toast(e.userMessage || e.message); }
     }
   }
+  async function customAction(key, action, label) {
+    busy.add(key); window.render();
+    const send = a => getJson('/api/item_action', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({key, action: a})});
+    try {
+      const r = await send(action);
+      await refresh(true);
+      toast(() => r.toast || label, r.undo ? async () => {
+        try { await send(r.undo); await refresh(true); window.render(); } catch (e) { toast(e.userMessage || e.message); }
+      } : null);
+    } catch (e) { toast(e.userMessage || e.message); }
+    finally { busy.delete(key); window.render(); }
+  }
   async function closeSession(key) {
     try {
       await post('/api/dismiss', [key]);
@@ -179,6 +195,8 @@ window.Today = (() => {
     } catch (e) { toast(e.userMessage || e.message); }
   }
   function click(event) {
+    const cu = event.target.closest('[data-today-custom]');
+    if (cu) { customAction(cu.dataset.todayKey, cu.dataset.todayCustom, cu.textContent); return true; }
     const fold = event.target.closest('[data-today-fold]');
     if (fold) { const k = fold.dataset.todayFold; unfolded.has(k) ? unfolded.delete(k) : unfolded.add(k); window.render(); return true; }
     const od = event.target.closest('[data-today-order]');

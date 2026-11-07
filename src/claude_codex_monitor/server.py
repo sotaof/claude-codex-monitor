@@ -994,6 +994,21 @@ class Monitor:
         return {'ready': bool(self.snapshot.get('ready')), 'now': now, 'window': {'start': start, 'end': end},
                 'agents': agents, 'schedules': tasks, 'sources': found, 'source_errors': self.source_errors}
 
+    def item_custom(self, key, action):
+        """One of a plugin item's own buttons: the source decides what it means; the monitor applies its 'core' part."""
+        name = key.split(':', 1)[0] if isinstance(key, str) else ''
+        poller = self.poller(name)
+        if not poller or not isinstance(action, str) or not sources.ACTION_ID_RE.match(action):
+            raise KeyError(key)
+        answer = poller.source.act(key[len(name) + 1:], action)
+        if not isinstance(answer, dict):
+            raise ValueError(action)
+        if answer.get('core') in sources.ACTIONS:
+            self.item_state.set(key, answer['core'])
+        poller.poll()                    # show the result now, not at the next poll
+        return {'ok': True, 'toast': answer.get('done') if isinstance(answer.get('done'), str) else None,
+                'undo': answer.get('undo') if isinstance(answer.get('undo'), str) else None}
+
     def item_action(self, key, action, until=None):
         """Done, later or skip for a plugin item; restore puts it back. Only keys of a loaded source are accepted."""
         if not isinstance(key, str) or not self.poller(key.split(':', 1)[0]):
@@ -1175,6 +1190,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 except ValueError:
                     return self._send(400, {'error': M('error.model_source')})
                 return self._send(200, {'ok': True, 'summary': self.mon.summary_info()})
+            if self.path == '/api/item_action':
+                body = body if isinstance(body, dict) else {}
+                try:
+                    return self._send(200, self.mon.item_custom(body.get('key'), body.get('action')))
+                except KeyError:
+                    return self._send(404, {'error': M('today.item_missing')})
+                except ValueError:
+                    return self._send(400, {'error': M('today.bad_action')})
             if self.path == '/api/items':
                 body = body if isinstance(body, dict) else {}
                 try:

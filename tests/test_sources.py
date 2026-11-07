@@ -37,8 +37,17 @@ class Inbox(sources.Source):
 
     def items(self, now):
         return [{'key': 'a', 'kind': 'approve', 'title': 'Approve access', 'who': 'Alex', 'since': 50, 'updated': self.updated},
-                {'key': 'b', 'kind': 'nonsense', 'title': 'Weekly note', 'url': 'javascript:alert(1)'},
+                {'key': 'b', 'kind': 'nonsense', 'title': 'Weekly note', 'url': 'javascript:alert(1)',
+                 'actions': [{'id': 'pin', 'label': {'en': 'Pin', 'zh': '置顶'}, 'primary': True}, {'id': 'Bad Id', 'label': 'x'},
+                             {'id': 'nolabel'}]},
                 {'title': 'no key, dropped'}]
+
+    def act(self, key, action):
+        if action == 'pin':
+            return {'core': 'done', 'undo': 'unpin', 'done': 'Pinned'}
+        if action == 'unpin':
+            return {'core': 'restore'}
+        return None
 
     def handle(self, method, path, query, body):
         if path == 'echo':
@@ -200,6 +209,17 @@ class Http(unittest.TestCase):
         self.assertEqual(self.today()['sources'][0]['items'][0]['handled'], 'done')
         self.assertEqual(self.req('POST', '/api/items', {'key': 'inbox:a', 'action': 'restore'})[0], 200)
         self.assertIsNone(self.today()['sources'][0]['items'][0]['handled'])
+
+    def test_an_item_with_its_own_buttons(self):
+        b = self.today()['sources'][0]['items'][1]
+        self.assertEqual(b['actions'], [{'id': 'pin', 'label': {'en': 'Pin', 'zh': '置顶'}, 'primary': True}])
+        st, body = self.req('POST', '/api/item_action', {'key': 'inbox:b', 'action': 'pin'})
+        self.assertEqual((st, json.loads(body)['undo'], json.loads(body)['toast']), (200, 'unpin', 'Pinned'))
+        self.assertEqual(self.today()['sources'][0]['items'][1]['handled'], 'done')
+        self.assertEqual(self.req('POST', '/api/item_action', {'key': 'inbox:b', 'action': 'unpin'})[0], 200)
+        self.assertIsNone(self.today()['sources'][0]['items'][1]['handled'])
+        self.assertEqual(self.req('POST', '/api/item_action', {'key': 'inbox:b', 'action': 'explode'})[0], 400)
+        self.assertEqual(self.req('POST', '/api/item_action', {'key': 'other:b', 'action': 'pin'})[0], 404)
 
     def test_item_errors(self):
         self.assertEqual(self.req('POST', '/api/items', {'key': 'other:a', 'action': 'done'})[0], 404)

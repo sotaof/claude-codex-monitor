@@ -16,7 +16,8 @@ Items are plain dicts::
      'updated': 1700000500,     # last activity
      'due': None,               # deadline (seconds) or None
      'url': None,               # where to open it, if anywhere (http/https only)
-     'open': True}              # False once the source can tell it is over
+     'open': True,              # False once the source can tell it is over
+     'actions': [...]}          # optional: the source's own buttons instead of Done / Not needed (see Source.act)
 
 Nothing here imports a plugin unless it is installed, and a plugin that fails to load or to poll only shows an error
 for itself.
@@ -34,6 +35,8 @@ ENTRY_POINT_GROUP = 'claude_codex_monitor.sources'
 DAY_BOUNDARY_HOUR = 4          # "today" lasts until 04:00 the next morning
 KINDS = ('reply', 'approve', 'deliver', 'waiting', 'alert', 'info', 'confirm')     # confirm: the source is not sure; you decide
 ACTIONS = ('done', 'skip', 'restore')
+ACTION_ID_RE = re.compile(r'^[a-z][a-z0-9_-]{0,31}$')
+MAX_BUTTONS = 4
 NAME_RE = re.compile(r'^[a-z][a-z0-9-]{0,31}$')
 STATIC_RE = re.compile(r'^[A-Za-z0-9_-]+\.(js|css|svg|png)$')
 STATIC_TYPES = {'js': 'application/javascript; charset=utf-8', 'css': 'text/css; charset=utf-8',
@@ -115,6 +118,12 @@ class Source:
         """Optional: answer /api/ext/<name>/<path>. Return (status code, JSON-able value) or None for 404."""
         return None
 
+    def act(self, key, action):
+        """Optional: one of the item's own buttons was pressed (key without the source prefix). Return a dict, or
+        None when the action is unknown. The dict may hold 'done' (a toast text), 'core' ('done', 'skip' or
+        'restore', applied to the item by the monitor) and 'undo' (an action id the Undo button sends)."""
+        return None
+
 
 class EnvEntryPoint:
     """A source named in $CCM_SOURCES as name=module:factory, for a plugin on PYTHONPATH that is not pip-installed."""
@@ -188,6 +197,23 @@ def _text(v, limit):
     return v[:limit] if isinstance(v, str) else ''
 
 
+def clean_actions(raw):
+    """A source's own buttons: [{'id', 'label': {'en', 'zh'} or text, 'primary'}], at most MAX_BUTTONS."""
+    out = []
+    for a in raw if isinstance(raw, list) else []:
+        if not isinstance(a, dict) or not isinstance(a.get('id'), str) or not ACTION_ID_RE.match(a['id']):
+            continue
+        label = a.get('label')
+        if isinstance(label, str):
+            label = {'en': label}
+        if not isinstance(label, dict):
+            continue
+        label = {k: v[:40] for k, v in label.items() if k in ('en', 'zh') and isinstance(v, str) and v}
+        if label:
+            out.append({'id': a['id'], 'label': label, 'primary': a.get('primary') is True})
+    return out[:MAX_BUTTONS] or None
+
+
 def clean(name, raw):
     """Keep only well-formed fields of an item from a plugin, so the page can trust their types."""
     if not isinstance(raw, dict) or not isinstance(raw.get('key'), str) or not raw['key']:
@@ -199,7 +225,7 @@ def clean(name, raw):
             'where': _text(raw.get('where'), 200), 'text': _text(raw.get('text'), 2000),
             'since': _num(raw.get('since')), 'updated': _num(raw.get('updated')), 'due': _num(raw.get('due')),
             'url': url if isinstance(url, str) and re.match(r'^https?://', url) else None,
-            'open': raw.get('open') is not False}
+            'open': raw.get('open') is not False, 'actions': clean_actions(raw.get('actions'))}
 
 
 class Poller:
