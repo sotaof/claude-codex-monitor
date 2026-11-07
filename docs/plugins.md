@@ -58,6 +58,26 @@ the plugin's own state folder, `<state dir>/ext/<name>/`, which `context.state_d
 `<state dir>/items.json`, not by the plugin, so every source behaves the same. Each item stays until you handle it,
 whatever its date.
 
+## Sending text to a model
+
+A source never runs a model tool itself. It declares what it would send, and the monitor gives it a gate:
+
+```python
+class Inbox(Source):
+    model_use = {'en': 'message excerpts', 'zh': '消息片段'}
+
+    def items(self, now):
+        gate = self.context.model            # read it when needed, not in __init__
+        if gate and gate.allowed():
+            text = gate.complete(prompt, system='Answer in JSON.')
+        ...
+```
+
+The gate uses the tool and model chosen in the page. The model summaries switch stops every source; each source,
+session summaries included, also has a switch of its own in the same panel, on by default. Calls are counted per
+source per day and shown there. `gate.complete` raises `ModelOff` when it is switched off; a source should then
+fall back to rules. A source without `model_use` gets no gate.
+
 ## What counts as "today"
 
 The Today page covers the day from midnight until **04:00 the next morning**, and a new day starts only at 04:00.
