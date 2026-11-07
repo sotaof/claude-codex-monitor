@@ -365,6 +365,7 @@ class ClaudeSession:
         self.todos = []
         self.task_list = collections.OrderedDict()
         self.pending_create = {}
+        self.pending_bash = {}                        # Bash inputs awaiting results, including possible background promotion.
         self.asks = {}                                # Unanswered AskUserQuestion / ExitPlanMode calls.
         self.turns = collections.deque(maxlen=80)     # Text turns: {role, ts, text}.
         self.last_text = ''                           # Latest assistant text, used as a batch description.
@@ -508,9 +509,12 @@ class ClaudeSession:
             bg = bool(inp.get('run_in_background'))
             codex = mentions_codex(cmd, self.cwd)
             ccli = mentions_claude(cmd, self.cwd)
+            task = dict(kind='bash', title=inp.get('description') or clip(cmd, 60), command=cmd,
+                        background=bg, codex=codex, claude=ccli, start=ts, cwd=self.cwd)
+            self.pending_bash[tid] = task
+            self.watch.add(tid)
             if bg or codex or ccli:
-                self._add(tid, kind='bash', title=inp.get('description') or clip(cmd, 60), command=cmd,
-                          background=bg, codex=codex, claude=ccli, start=ts, cwd=self.cwd)
+                self._add(tid, **task)
         elif name in FILE_TOOLS:
             p = inp.get('file_path') or inp.get('notebook_path')
             if p:
@@ -565,10 +569,16 @@ class ClaudeSession:
             return
         if tuid in self.starts:
             tuid = self.starts.pop(tuid)
+        pending_bash = self.pending_bash.pop(tuid, None)
+        tur = tur if isinstance(tur, dict) else {}
         task = self.tasks.get(tuid)
+        if task is None and pending_bash is not None and tur.get('backgroundTaskId'):
+            self._add(tuid, **pending_bash)
+            task = self.tasks[tuid]
+        if pending_bash is not None:
+            self.watch.discard(tuid)
         if not task:
             return
-        tur = tur if isinstance(tur, dict) else {}
         err = bool(b.get('is_error'))
         text = ' '.join(iter_strings(b.get('content')))
         if task['kind'] == 'session':
@@ -591,7 +601,9 @@ class ClaudeSession:
             return
         if task['kind'] == 'bash':
             if tur.get('backgroundTaskId'):
-                task['bg_id'] = tur['backgroundTaskId']
+                if not task['background'] or tur.get('timedOutAfterMs'):
+                    task['note'] = M('note.timeout_background')
+                task.update(bg_id=tur['backgroundTaskId'], background=True)
                 m = re.search(r'written to: (\S+?\.output)', text)
                 if m:
                     task['output_file'] = m.group(1)
