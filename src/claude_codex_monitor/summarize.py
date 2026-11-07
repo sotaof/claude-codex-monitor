@@ -313,8 +313,23 @@ class CodexCli(CliBackend):
             os.unlink(out)
 
 
-BACKENDS = {'openai': OpenAICompatible, 'anthropic': AnthropicAPI, 'claude-cli': ClaudeCli, 'codex-cli': CodexCli}
-AUTO_ORDER = ('claude-cli', 'codex-cli')      # also what the page can switch between
+class CursorCli(CliBackend):
+    """`cursor-agent -p` in its read-only ask mode, with the account it is signed in with (`cursor-agent login`).
+    The prompt is passed as the last argument, which is how the command takes it."""
+    name = 'cursor-cli'
+    exe = 'cursor-agent'
+
+    def complete(self, system, prompt, timeout):
+        args = [self.path, '-p', '--output-format', 'text', '--mode', 'ask'] + (['--model', self.model] if self.model else [])
+        out = self._run(args + [system + '\n\n' + prompt], None, timeout)
+        if 'Authentication required' in out:
+            raise RuntimeError('cursor-agent is not signed in: run `cursor-agent login`')
+        return out
+
+
+BACKENDS = {'openai': OpenAICompatible, 'anthropic': AnthropicAPI, 'claude-cli': ClaudeCli, 'codex-cli': CodexCli,
+            'cursor-cli': CursorCli}
+AUTO_ORDER = ('claude-cli', 'codex-cli', 'cursor-cli')      # also what the page can switch between
 CLAUDE_MODELS = ('sonnet', 'opus', 'haiku')   # claude's own aliases for the latest of each
 MODEL_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._:/-]{0,63}$')
 

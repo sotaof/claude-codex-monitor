@@ -37,6 +37,7 @@ import webbrowser
 
 from . import autostart
 from . import collect as C
+from . import cursor as K
 from . import demo
 from . import schedules
 from . import sources
@@ -150,6 +151,7 @@ class Monitor:
         self.ready_logged = set()
         self.cfg = cfg
         self.lang = cfg.lang
+        K.configure(cfg.cursor_dir)
         secure_dir(cfg.state_dir)
         self.lock = threading.RLock()
         self.tails = {}
@@ -403,6 +405,7 @@ class Monitor:
                 if m['id'] not in by_id or mt[f] > mt[by_id[m['id']]]:
                     by_id[m['id']] = f
         threads = list(by_id.values())
+        kfiles = list(fresh(K.chat_files(), cutoff))          # Cursor agent chats
         self.exec_metas = sorted([m for m in metas.values() if m['kind'] == 'exec' and m['start']], key=lambda m: m['start'])
         spawn = {}
         for m in metas.values():
@@ -410,13 +413,14 @@ class Monitor:
                 spawn.setdefault(m['parent'], []).append(m)
         self.spawn_metas = spawn
 
-        todo = sorted(cfiles + threads, key=lambda f: mt[f], reverse=True)
+        todo = sorted(cfiles + threads + kfiles, key=lambda f: mt[f], reverse=True)
+        kset = set(kfiles)
         prog = {'done': 0, 'total': len(todo)}
         if not self.snapshot.get('ready'):
             self.snapshot = dict(self.snapshot, progress=prog)
         for f in todo:
             try:
-                self.tail(f, self.claude_factory(f) if f.startswith(C.CLAUDE_PROJECTS) else C.CodexThread)
+                self.tail(f, K.CursorChat if f in kset else self.claude_factory(f) if f.startswith(C.CLAUDE_PROJECTS) else C.CodexThread)
             except OSError as e:        # skip a log that cannot be read right now; try again next scan
                 if (f, e.errno) not in self.unreadable:
                     self.unreadable.add((f, e.errno))
@@ -438,12 +442,16 @@ class Monitor:
                 r = self.codex_row(f, names, now)
                 if r:
                     rows.append(r)
+            for f in kfiles:
+                r = self.cursor_row(f, now)
+                if r:
+                    rows.append(r)
         rows = self.drop_old_logs(rows)
         self.name_forks(rows)
         rows.sort(key=lambda r: r['last_ts'] or 0, reverse=True)
         self.snapshot = {'ready': True, 'now': now, 'rows': rows, 'progress': prog,
                          'scan_ms': int((time.time() - now) * 1000), 'days': self.cfg.days, 'lang': self.lang,
-                         'lang_locked': self.cfg.lock_lang, 'sources': self.sources(len(cfiles), len(threads)),
+                         'lang_locked': self.cfg.lock_lang, 'sources': self.sources(len(cfiles), len(threads), len(kfiles)),
                          'summary': self.summary_info()}
         self.log_ready()
         self.update_schedule_state()
@@ -475,7 +483,7 @@ class Monitor:
                         del self.dismissed[k]
                     self.save_dismissed()
 
-    def sources(self, claude_logs, codex_logs):
+    def sources(self, claude_logs, codex_logs, cursor_logs=0):
         """Where the logs were looked for, so an empty list can say why it is empty."""
         home = os.path.expanduser('~')
         def show(p):
@@ -483,7 +491,9 @@ class Monitor:
         return [{'client': 'Claude Code', 'path': show(C.CLAUDE_PROJECTS), 'found': os.path.isdir(C.CLAUDE_PROJECTS),
                  'logs': claude_logs, 'flag': '--claude-dir'},
                 {'client': 'Codex', 'path': show(C.CODEX_SESSIONS), 'found': os.path.isdir(C.CODEX_SESSIONS),
-                 'logs': codex_logs, 'flag': '--codex-dir'}]
+                 'logs': codex_logs, 'flag': '--codex-dir'},
+                {'client': 'Cursor', 'path': show(K.CURSOR_PROJECTS), 'found': os.path.isdir(K.CURSOR_PROJECTS),
+                 'logs': cursor_logs, 'flag': '--cursor-dir'}]
 
     # ---- model summaries: the on / off switch ----
     def summary_state(self):
@@ -566,7 +576,7 @@ class Monitor:
             raise ValueError(method)
         name = resolve(method)
         if model is not None and not (name == 'claude-cli' and model in CLAUDE_MODELS
-                                      or name == 'codex-cli' and (model == '' or MODEL_RE.match(model))):
+                                      or name in ('codex-cli', 'cursor-cli') and (model == '' or MODEL_RE.match(model))):
             raise ValueError(model)
         backend = make_backend(self.summary_cfg(method, model))      # ValueError when the tool is not installed
         if not backend:
@@ -867,6 +877,46 @@ class Monitor:
         row['dismissed'], row['reappeared'] = self.dismiss_state(key, msg_ts)
         return row
 
+    def cursor_row(self, path, now):
+        """A Cursor agent chat: running while a turn has no end mark and the log keeps changing; waiting when the
+        last turn ended with a reply that asks you something (the same summaries and rules as the other clients)."""
+        ch = self.state_of(path)
+        if ch is None or not ch.turns or not ch.mtime:
+            return None
+        key = 'cursor:' + os.path.basename(path)[:-len('.jsonl')]
+        self.paths[key] = path
+        cwd = K.cwd_of(os.path.basename(os.path.dirname(os.path.dirname(os.path.dirname(path)))))
+        turns = ch.timed_turns()
+        last = ch.mtime
+        last_text = next((t['text'] for t in reversed(turns) if t['role'] == 'assistant'), '')
+        row = {'key': key, 'client': 'cursor', 'title': C.clip(ch.first_user.replace('\n', ' '), 40) or key[7:15],
+               'project': C.project_of(cwd) if cwd else '', 'cwd': cwd, 'last_ts': last, 'start_ts': C.parse_ts(ch.first_ts),
+               'msg_ts': last, 'progress': None, 'items': [], 'optional': [], 'summarized': True, 'summarizing': False,
+               'line': C.plain_line(last_text), 'note': None, 'wait_since': None, 'running_title': None}
+        if ch.in_turn and now - last < C.TURN_DEAD_SECONDS:
+            row['status'], row['note'] = 'run', M('note.doing', ch.last_tool) if ch.last_tool else M('note.cursor_reply')
+            row['wait_since'] = C.parse_ts(ch.last_user_ts)
+        elif ch.in_turn:
+            row['status'], row['note'] = 'fail', M('note.cursor_incomplete')
+        elif ch.last_status and ch.last_status != 'success':
+            row['status'], row['note'] = 'fail', M('note.aborted')
+        else:
+            last_asst = next((t['ts'] for t in reversed(turns) if t['role'] == 'assistant'), None)
+            w, items, opt, done, pend, err = self.waiting_info(key, turns, last_asst, ch.last_user_ts, last_asst)
+            row.update(items=items, optional=opt, summarized=done, summarizing=pend, summ_error=err)
+            row['status'] = 'wait' if w else 'ok'
+            if w:
+                row['wait_since'] = C.parse_ts(last_asst)
+        row['dismissed'], row['reappeared'] = self.dismiss_state(key, last)
+        return row
+
+    def cursor_detail(self, row, path, now):
+        ch = self.state_of(path)
+        info = {'status': row['status'], 'start': C.parse_ts(ch.first_ts), 'last': ch.mtime, 'cwd': row['cwd'], 'branch': None,
+                'model': None, 'pid': None, 'proc': '—', 'id': row['key'][len('cursor:'):], 'usage': {'output': 0, 'total': 0},
+                'files': [], 'client': 'Cursor'}
+        return {'row': row, 'info': info, 'tasks': [], 'batches': [], 'todos': None}
+
     # ---- Details ----
     def open_url(self, key):
         """Build a desktop session URL only from server-known IDs, never from page-supplied URLs."""
@@ -899,7 +949,8 @@ class Monitor:
             return None
         now = time.time()
         with self.lock:
-            d = self.claude_detail(row, path, now) if key.startswith('claude:') else self.codex_detail(row, path, now)
+            d = (self.claude_detail(row, path, now) if key.startswith('claude:') else
+                 self.cursor_detail(row, path, now) if key.startswith('cursor:') else self.codex_detail(row, path, now))
         # Browser links open on a user click; macOS does not foreground apps opened by this background server.
         d['open_url'] = self.open_url(key)
         return d
@@ -1318,6 +1369,7 @@ def use_demo(cfg):
     atexit.register(shutil.rmtree, root, True)
     now = time.time()
     cfg.claude_dir, cfg.codex_dir = demo.build(os.path.join(root, 'data'), now)
+    cfg.cursor_dir = os.path.join(root, 'data', 'no-cursor')      # made-up sessions only
     cfg.state_dir, cfg.desktop, cfg.summary, cfg.token = os.path.join(root, 'state'), False, 'off', False
     os.makedirs(cfg.state_dir)
     with open(os.path.join(cfg.state_dir, 'dismissed.json'), 'w', encoding='utf-8') as f:
@@ -1388,6 +1440,7 @@ def main(argv=None):
     if cfg.demo:
         use_demo(cfg)
     C.configure(cfg.claude_dir, cfg.codex_dir, cfg.days)
+    K.configure(cfg.cursor_dir)
     try:
         mon = Monitor(cfg, started_at=started_at)
     except ValueError as e:

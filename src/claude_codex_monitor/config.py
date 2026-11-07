@@ -1,11 +1,12 @@
 """Runtime settings. Command-line flags override environment variables, which override defaults."""
 import argparse
 import os
+import sys
 from dataclasses import dataclass
 
 from . import __version__
 
-BACKENDS = ('auto', 'off', 'openai', 'anthropic', 'claude-cli', 'codex-cli')
+BACKENDS = ('auto', 'off', 'openai', 'anthropic', 'claude-cli', 'codex-cli', 'cursor-cli')
 LANGS = ('en', 'zh')
 
 
@@ -17,6 +18,7 @@ class Config:
     state_dir: str = ''           # dismissed sessions and the summary cache live here
     claude_dir: str = ''          # Claude Code data (honours CLAUDE_CONFIG_DIR)
     codex_dir: str = ''           # Codex data (honours CODEX_HOME)
+    cursor_dir: str = ''          # Cursor data: agent chats under <dir>/projects
     summary: str = 'auto'         # which model summarizes "what is waiting for you"; auto: local claude, then codex
     model: str = ''
     summary_fixed: bool = False   # --summary or --model given at startup: the page cannot change them then
@@ -68,6 +70,9 @@ def parse_args(argv=None):
                     help='Claude Code data folder (default $CLAUDE_CONFIG_DIR or ~/.claude)')
     ap.add_argument('--codex-dir', default=env('CODEX_HOME') or os.path.join(home, '.codex'),
                     help='Codex data folder (default $CODEX_HOME or ~/.codex)')
+    ap.add_argument('--cursor-dir', default=env('CCM_CURSOR_DIR') or '',
+                    help='Cursor data folder (default ~/.cursor, or the .cursor folder next to --claude-dir when that is '
+                         'given; agent chats are read from its projects folder)')
     ap.add_argument('--summary', choices=BACKENDS,
                     help='how to summarize what each session is waiting for (default auto: the local claude '
                          'command, else codex; off: built-in text rules only, nothing is sent). Given here, it '
@@ -105,6 +110,9 @@ def parse_args(argv=None):
     fixed = a.summary is not None or a.model is not None or bool(env('CCM_SUMMARY') or env('CCM_MODEL'))
     return Config(port=a.port, days=a.days, lang=a.lang, state_dir=os.path.expanduser(a.state_dir),
                   claude_dir=os.path.expanduser(a.claude_dir), codex_dir=os.path.expanduser(a.codex_dir),
+                  cursor_dir=os.path.expanduser(a.cursor_dir or (
+                      os.path.join(os.path.dirname(os.path.expanduser(a.claude_dir).rstrip('/')), '.cursor')
+                      if '--claude-dir' in (argv if argv is not None else sys.argv[1:]) else os.path.join(home, '.cursor'))),
                   summary=summary, model=model, summary_fixed=fixed, base_url=a.base_url.rstrip('/'), desktop=not a.no_desktop,
                   lock_lang=a.lock_lang, demo=a.demo, open=not a.no_open, token=not a.no_token,
                   install_autostart=a.install_autostart,

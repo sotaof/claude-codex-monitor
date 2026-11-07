@@ -22,7 +22,7 @@
   --off:#6b7280;--off-bg:#f0f1f3;--off-line:#d5d8dd;
   --stale:#d9902e;--stale-stripe:#e8b46a;
   --tip:#6d3fc4;--tip-bg:#f1ecfb;--back:#4338ca;--back-bg:#eef2ff;
-  --claude:#b0532c;--claude-bg:#fbede6;--codex:#2c3644;--codex-bg:#e9ecf0;
+  --claude:#b0532c;--claude-bg:#fbede6;--codex:#2c3644;--codex-bg:#e9ecf0;--cursor:#5b4bd6;--cursor-bg:#efecfd;
   --bar-ink:#1c2430;--pre-bg:#f2f4f7;--exp-bg:#fbfcfd;--brk:#f1f3f6;--brk-line:#cdd3da;--toast-link:#9cc0ff;
   --shadow:0 1px 2px rgba(20,30,40,.04),0 8px 30px rgba(20,30,40,.06);--menu-shadow:0 8px 24px rgba(20,30,40,.14);
   --mono:ui-monospace,"SF Mono",Menlo,monospace;
@@ -39,7 +39,7 @@
   --off:#9aa3ae;--off-bg:rgba(154,163,174,.12);--off-line:#3a404b;
   --stale:#c98a2e;--stale-stripe:#8f6427;
   --tip:#c4a5ff;--tip-bg:rgba(196,165,255,.12);--back:#a5b4fc;--back-bg:rgba(165,180,252,.12);
-  --claude:#f09a72;--claude-bg:rgba(240,154,114,.13);--codex:#c3cad4;--codex-bg:rgba(195,202,212,.12);
+  --claude:#f09a72;--claude-bg:rgba(240,154,114,.13);--codex:#c3cad4;--codex-bg:rgba(195,202,212,.12);--cursor:#a99cff;--cursor-bg:rgba(169,156,255,.13);
   --bar-ink:#e6e8ec;--pre-bg:#11141a;--exp-bg:#191d24;--brk:#1b1f27;--brk-line:#3a404b;--toast-link:#9cc0ff;
   --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 30px rgba(0,0,0,.35);--menu-shadow:0 10px 28px rgba(0,0,0,.5);
   color-scheme:dark;
@@ -57,7 +57,7 @@ a{color:var(--run)}
 .dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:none}
 .d-wait{background:var(--wait)}.d-run{background:var(--run)}.d-fail{background:var(--fail)}.d-ok{background:var(--ok)}
 .cl{font-size:11.5px;font-weight:600;padding:1px 7px;border-radius:5px;white-space:nowrap}
-.c-claude{background:var(--claude-bg);color:var(--claude)}.c-codex{background:var(--codex-bg);color:var(--codex)}
+.c-claude{background:var(--claude-bg);color:var(--claude)}.c-codex{background:var(--codex-bg);color:var(--codex)}.c-cursor{background:var(--cursor-bg);color:var(--cursor)}
 .chip{font-size:12px;color:var(--muted);background:var(--line2);border-radius:5px;padding:0 6px;white-space:nowrap}
 .chip.run{background:var(--run-bg);color:var(--run)}.chip.fail{background:var(--fail-bg);color:var(--fail)}
 .chip.tip{background:var(--tip-bg);color:var(--tip)}.chip.back{background:var(--back-bg);color:var(--back)}.chip.sum{background:transparent;color:var(--faint);padding:0}
@@ -366,6 +366,7 @@ function settingsHtml() {
   const langMenu = snap && snap.lang_locked ? '' : dropdown('ddLang', lang === 'zh' ? '简体中文' : 'English', ICON.globe, [['en', 'English'], ['zh', '简体中文']], lang);
   return `<div class="tset">${tag}${themeMenu}${langMenu}</div>`;     // one group: it never splits across lines
 }
+const clientName = c => ({claude: 'Claude', codex: 'Codex', cursor: 'Cursor'})[c] || c;
 function brand() { return `<div class="brand"><img class="logo" src="/favicon.svg" alt=""><h1>${t('app.title')}</h1></div>`; }
 function staticText() {
   document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
@@ -582,7 +583,7 @@ function toolBar() {
   const vis = ((snap && snap.rows) || []).filter(r => !isDismissed(r) && inRange(r));
   const n = c => c === 'all' ? vis.length : vis.filter(r => r.client === c).length;
   return `<div class="tools"><label class="search">${ICON.search}<input id="search" placeholder="${t('search.placeholder')}" aria-label="${t('search.label')}" value="${esc(query)}"><kbd>/</kbd></label><span class="sp"></span>
-    <div class="sg" id="clientSeg">${[['all', t('common.all')], ['claude', 'Claude'], ['codex', 'Codex']].map(([c, name]) => `<button data-client="${c}" class="${client === c ? 'on' : ''}">${name} <span class="faint">${n(c)}</span></button>`).join('')}</div>
+    <div class="sg" id="clientSeg">${[['all', t('common.all')], ['claude', 'Claude'], ['codex', 'Codex'], ['cursor', 'Cursor']].filter(([c]) => c !== 'cursor' || n('cursor') || client === 'cursor').map(([c, name]) => `<button data-client="${c}" class="${client === c ? 'on' : ''}">${name} <span class="faint">${n(c)}</span></button>`).join('')}</div>
     <div class="sg" id="dateSeg">${dateOptions().map(d => `<button data-days="${d}" class="${span() === d ? 'on' : ''}">${d ? t('header.days', d + 1) : t('time.today')}</button>`).join('')}</div>
     ${sortSeg('data-order', order, [['new', t('sort.newest')], ['old', t('sort.oldest')]])}${updatedHtml(snap && snap.now)}</div>`;
 }
@@ -681,8 +682,8 @@ function summaryOpts(s) {
   };
   const model = s.backend === 'claude-cli'
     ? `<select id="sumModel">${s.claude_models.map(m => `<option value="${m}"${s.model === m ? ' selected' : ''}>${m}</option>`).join('')}</select>`
-    : `<input id="sumModel" value="${esc(s.model || '')}" placeholder="${esc(t('model.codex_default'))}" spellcheck="false" autocomplete="off">`;
-  return `<div class="opts"><label>${t('settings.method')}<select id="sumMethod">${['auto', 'claude-cli', 'codex-cli'].map(opt).join('')}</select></label><label>${t('settings.model')}${model}</label></div>`;
+    : `<input id="sumModel" value="${esc(s.model || '')}" placeholder="${esc(t(s.backend === 'cursor-cli' ? 'model.cursor_default' : 'model.codex_default'))}" spellcheck="false" autocomplete="off">`;
+  return `<div class="opts"><label>${t('settings.method')}<select id="sumMethod">${['auto', 'claude-cli', 'codex-cli', 'cursor-cli'].map(opt).join('')}</select></label><label>${t('settings.model')}${model}</label></div>`;
 }
 async function setSummary(method, model) {
   try {
@@ -758,14 +759,14 @@ function rowHtml(r, now) {
   if (r.status === 'wait') { const w = now - (r.wait_since || r.last_ts); when = t('time.waited', dur(w)); if (w > 86400) cls = 'old'; }
   if (r.status === 'run' && r.wait_since) when = t('time.working', dur(now - r.wait_since));
   return `<div class="row r-${r.status}" data-key="${esc(r.key)}" tabindex="0">
-    <span class="rail"></span><span class="cl c-${r.client}">${r.client === 'claude' ? 'Claude' : 'Codex'}</span>
+    <span class="rail"></span><span class="cl c-${r.client}">${clientName(r.client)}</span>
     <div class="main">${body}</div>
     <div class="right"><span class="when ${cls}">${esc(when)}</span><button class="x" data-close="${esc(r.key)}" aria-label="${t('list.dismiss')}" title="${t('list.dismiss_hint')}">${t('common.close')}</button></div></div>`;
 }
 
 // A dismissed session in the Dismissed card's list: shown as it was, with a way back
 function closedRowHtml(r) {
-  return `<div class="row r-ok" data-key="${esc(r.key)}" tabindex="0"><span class="rail"></span><span class="cl c-${r.client}">${r.client === 'claude' ? 'Claude' : 'Codex'}</span>
+  return `<div class="row r-ok" data-key="${esc(r.key)}" tabindex="0"><span class="rail"></span><span class="cl c-${r.client}">${clientName(r.client)}</span>
     <div class="main"><div class="t1"><span class="tt">${esc(r.title)}</span><span class="chip">${esc(r.project || '—')}</span><span class="chip">${t('status.' + r.status)}</span></div><div class="line2">${esc(r.line || '—')}</div></div>
     <div class="right"><span class="when">${esc(whenLabel(r.last_ts))}</span><button class="btn" data-restore="${esc(r.key)}">${t('closed.restore')}</button></div></div>`;
 }
@@ -781,7 +782,7 @@ function renderDetail() {
   const dis = isDismissed(r);
   const stName = ST.some(x => x.k === r.status) ? t('status.' + r.status) : r.status;
   let top = topBar() + `<div class="dh"><div class="navline"><a class="back" href="#/">← ${t('detail.back')}</a></div><div class="dt">
-    <span class="cl c-${r.client}">${r.client === 'claude' ? 'Claude' : 'Codex'}</span><h1>${esc(r.title)}</h1><span class="pill p-${r.status}">${stName}</span>
+    <span class="cl c-${r.client}">${clientName(r.client)}</span><h1>${esc(r.title)}</h1><span class="pill p-${r.status}">${stName}</span>
     ${r.progress && r.progress.run && r.status !== 'run' ? `<span class="chip run">${t('tasks.running', r.progress.run)}</span>` : ''}
     ${r.reappeared ? `<span class="chip back">${t('list.reappeared')}</span>` : ''}${dis ? `<span class="chip">${t('closed.badge')}</span>` : ''}
     <span class="sp"></span>${openBtn(d)}${dis ? `<button class="btn" data-restore="${esc(r.key)}">${t('closed.restore_list')}</button>` : `<button class="btn" data-close="${esc(r.key)}">${t('list.dismiss')}</button>`}</div></div>`;
@@ -826,7 +827,7 @@ function renderDetail() {
   window.scrollTo(0, keep);
 }
 function openBtn(d) {
-  const app = d.row.client === 'claude' ? 'Claude' : 'Codex';
+  const app = clientName(d.row.client);
   return d.open_url ? `<a class="btn pri" href="${esc(d.open_url)}" data-open="${esc(d.row.key)}" title="${esc(d.open_url)}">${t('detail.open', app)}</a>`
     : `<button class="btn" disabled title="${t('detail.no_desktop')}">${t('detail.open', app)}</button>`;
 }
@@ -1045,7 +1046,7 @@ document.addEventListener('click', e => {
   if (op) {
     // Let the user-clicked browser link open first so the system can foreground the app.
     // If the page keeps focus for 1.5 seconds, use the server fallback for a blocked link.
-    const key = op.dataset.open, app = key.startsWith('claude:') ? 'Claude' : 'Codex';
+    const key = op.dataset.open, app = clientName(key.split(':')[0]);
     let handed = false;
     const onBlur = () => { handed = true; };
     window.addEventListener('blur', onBlur, {once: true});

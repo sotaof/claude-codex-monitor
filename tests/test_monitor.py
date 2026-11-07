@@ -120,8 +120,9 @@ class NoSessions(unittest.TestCase):
             mon.scan()
         snap = mon.snapshot
         self.assertEqual(snap['rows'], [])
-        claude, codex = snap['sources']
+        claude, codex, cursor = snap['sources']
         self.assertEqual((claude['path'], claude['found'], claude['logs']), ('~/.claude/projects/', True, 0))
+        self.assertEqual((cursor['client'], cursor['path'], cursor['found']), ('Cursor', '~/.cursor/projects/', False))
         self.assertEqual((codex['path'], codex['found'], codex['logs']), ('~/.codex/sessions/', False, 0))
 
 

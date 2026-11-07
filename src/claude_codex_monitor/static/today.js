@@ -115,7 +115,7 @@ window.Today = (() => {
     const act = [], confirm = [], others = [];
     // Sessions close here as on the session list (a new message brings them back)
     for (const a of agents()) act.push({since: a.since || 0, html: trow('#/s/' + encodeURIComponent(a.key),
-      srcTag('c-' + a.client, a.client === 'claude' ? 'Claude' : 'Codex'), a.title, esc(tm(a.text) || ''), ago(a.since),
+      srcTag('c-' + a.client, clientName(a.client)), a.title, esc(tm(a.text) || ''), ago(a.since),
       `<span class="tacts"><button class="tbtn" data-today-close="${esc(a.key)}" title="${esc(t('list.dismiss_hint'))}">${t('common.close')}</button></span>`)});
     for (const s of data.schedules) act.push({since: s.since || 0, html: trow('#/schedules/' + s.source + '/' + encodeURIComponent(s.id),
       srcTag('c-' + s.source, t('schedule.source.' + s.source)), s.title, esc(t('schedule.result.' + s.status) + (s.summary ? ' · ' + tm(s.summary) : '')),

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Cursor agent chats join the session list (`~/.cursor/projects/*/agent-transcripts`, `--cursor-dir`): waiting,
+  running, interrupted and done like Claude and Codex, with the same summaries, closing and Today page. Chats in
+  temporary folders that are gone, subagent logs and the command line agent's own store are not read.
+- `cursor-cli` model backend: the local `cursor-agent` (signed in with `cursor-agent login`) can write summaries and
+  serve source plugins; the automatic choice tries claude, then codex, then cursor-agent.
 - **Today** is the new home page: sessions waiting for your reply (last 3 days), scheduled tasks to handle, and the
   items of installed source plugins, in one place. "Today" runs from midnight to 04:00 the next morning, so late-night
   work is still the same day and the hours after midnight are not missed the next morning.

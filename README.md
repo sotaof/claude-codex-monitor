@@ -309,6 +309,7 @@ Most options can also be set with an environment variable.
 | `--state-dir` | `CCM_STATE_DIR` | `~/.claude-codex-monitor` | dismissed sessions, summary cache, summary on / off, tool and model |
 | `--claude-dir` | `CLAUDE_CONFIG_DIR` | `~/.claude` | Claude Code data |
 | `--codex-dir` | `CODEX_HOME` | `~/.codex` | Codex data |
+| `--cursor-dir` | `CCM_CURSOR_DIR` | `~/.cursor` | Cursor data; agent chats are read from `projects/*/agent-transcripts` |
 | `--no-desktop` | `CCM_NO_DESKTOP=1` | off | don't read the Claude desktop app's files |
 | `--no-open` | `CCM_NO_OPEN=1` | off | don't open the page in the browser after starting |
 | `--no-token` | `CCM_NO_TOKEN=1` | off | open the page without the access token; only on a computer you don't share |

@@ -246,6 +246,7 @@ tail -n 200 ~/.claude-codex-monitor/monitor.log
 | `--state-dir` | `CCM_STATE_DIR` | `~/.claude-codex-monitor` | 关闭记录、总结缓存、模型总结的开关、总结方式和模型 |
 | `--claude-dir` | `CLAUDE_CONFIG_DIR` | `~/.claude` | Claude Code 数据目录 |
 | `--codex-dir` | `CODEX_HOME` | `~/.codex` | Codex 数据目录 |
+| `--cursor-dir` | `CCM_CURSOR_DIR` | `~/.cursor` | Cursor 数据目录，读取其中 `projects/*/agent-transcripts` 下的 Agent 会话 |
 | `--no-desktop` | `CCM_NO_DESKTOP=1` | 关 | 不读 Claude 桌面端的文件 |
 | `--no-open` | `CCM_NO_OPEN=1` | 关 | 启动后不自动打开浏览器 |
 | `--no-token` | `CCM_NO_TOKEN=1` | 关 | 不用口令就能打开页面；只在不和别人共用的电脑上用 |
