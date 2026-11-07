@@ -261,6 +261,33 @@ python3 run.py --remove-autostart
   start with `--claude-dir` or `--codex-dir`.
 - It started at login but the page does not open: see `~/.claude-codex-monitor/monitor.log`.
 
+### If it is slow to start
+
+When started at login, stdout and stderr go to `monitor.log` in the state folder:
+`~/.claude-codex-monitor/monitor.log`, or the folder set by `--state-dir` / `CCM_STATE_DIR`.
+Look for these lines (example times and counts):
+
+```text
+ready after 26.3s (sessions: 148)
+schedules ready after 31.0s (tasks: 17)
+```
+
+Each appears once per process, after its first snapshot is ready. Both times are measured from monitor startup.
+If the list stays loading, find the monitor's process ID (PID) and send it `SIGUSR1`:
+
+```bash
+pgrep -f claude_codex_monitor
+kill -USR1 <pid>
+tail -n 200 ~/.claude-codex-monitor/monitor.log
+```
+
+If several PIDs appear, choose the monitor you want to inspect. Use your custom state folder in the last command.
+No root access is needed for your own process. The signal writes a local timestamp, PID and all Python thread
+stacks (the functions each thread is executing) to stderr, including in `--demo` mode.
+When started by hand, the output goes to the terminal unless redirected.
+The Python signal handler runs on the main thread; a blocking native call there can delay the dump.
+Platforms without `SIGUSR1` skip registration.
+
 ## Options
 
 Most options can also be set with an environment variable.

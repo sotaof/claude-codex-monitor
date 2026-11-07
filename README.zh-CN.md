@@ -197,6 +197,36 @@ python3 run.py --remove-autostart
 - 列表是空的：页面会列出它找过的目录，以及每个目录在不在。数据放在别处的话，启动时加 `--claude-dir` 或 `--codex-dir`。
 - 开机自启了但页面打不开：看 `~/.claude-codex-monitor/monitor.log`。
 
+### 排查启动慢
+
+登录自启时，标准输出和错误输出都写入状态目录的 `monitor.log`。
+默认路径是 `~/.claude-codex-monitor/monitor.log`；设了 `--state-dir` 或 `CCM_STATE_DIR`，就去对应目录找。
+先看这两行，下面的耗时和数量仅为示例：
+
+```text
+ready after 26.3s (sessions: 148)
+schedules ready after 31.0s (tasks: 17)
+```
+
+每个进程各打一次，分别表示会话和定时任务的首份快照已就绪。
+两项耗时都从监控启动开始算。
+列表一直「加载中」时，先查进程编号（PID），再发 `SIGUSR1` 信号：
+
+```bash
+pgrep -f claude_codex_monitor
+kill -USR1 <pid>
+tail -n 200 ~/.claude-codex-monitor/monitor.log
+```
+
+查到多个 PID 时，选要排查的监控进程。
+用了自定义状态目录，最后一条命令也要换路径。
+操作自己的进程不需要 root。
+信号会向错误输出写入本地时间、PID 和所有 Python 线程的调用栈，即各线程正在执行的函数位置。
+`--demo` 模式同样支持。
+手动启动时，输出显示在终端，除非自行重定向。
+信号处理在 Python 主线程执行；主线程阻塞在原生调用时，导出可能延迟。
+平台没有 `SIGUSR1` 时跳过注册。
+
 ## 配置
 
 大部分选项也可以用环境变量设置。

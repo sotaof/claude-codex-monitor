@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Startup diagnostics: `SIGUSR1` writes a timestamped all-thread Python stack dump to stderr, including in demo
+  mode. The first session and scheduled-task snapshots each log their readiness time and count to stdout.
 - Read-only Scheduled tasks tab for user LaunchAgents, Claude desktop tasks and Codex automations, with
   per-run results, heartbeat turn detection, missed-run alerts, on-demand masked launchd logs and a separate
   KeepAlive service card. Scheduler collection runs independently every 45 seconds; launchd history starts

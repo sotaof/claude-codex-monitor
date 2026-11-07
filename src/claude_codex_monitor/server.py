@@ -11,6 +11,7 @@ import atexit
 import dataclasses
 import datetime as dt
 import errno
+import faulthandler
 import glob
 import hmac
 import http.server
@@ -56,6 +57,19 @@ STATIC_FILES = {  # URL path -> (file in STATIC_DIR, content type)
 VIEWABLE_EXT = ('.md', '.txt', '.csv', '.json', '.jsonl', '.html', '.log', '.sql', '.yaml', '.yml', '.output', '.py', '.mjs', '.js', '.sh', '.toml')
 SCAN_INTERVAL = 3
 EVICT_SECONDS = 600              # forget the read state of a log nothing has looked at for this long
+
+
+def dump_stacks(signum, frame):
+    print('--- stack dump %s (pid %d) ---' % (dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), os.getpid()),
+          file=sys.stderr, flush=True)
+    faulthandler.dump_traceback(file=sys.stderr, all_threads=True)
+    sys.stderr.flush()
+
+
+def register_stack_dump():
+    usr1 = getattr(signal, 'SIGUSR1', None)
+    if usr1 is not None:
+        signal.signal(usr1, dump_stacks)
 
 
 def fmt_local(ts):
@@ -127,7 +141,9 @@ def claude_tmp(base='/tmp'):
 
 
 class Monitor:
-    def __init__(self, cfg):
+    def __init__(self, cfg, started_at=None):
+        self.started_at = time.monotonic() if started_at is None else started_at
+        self.ready_logged = set()
         self.cfg = cfg
         self.lang = cfg.lang
         secure_dir(cfg.state_dir)
@@ -182,6 +198,17 @@ class Monitor:
         C.set_tail_func(self.tail)
 
     # ---- Reading ----
+    def log_ready(self, scheduled=False):
+        kind = 'tasks' if scheduled else 'sessions'
+        with self.lock:
+            snapshot = self.schedule_snapshot if scheduled else self.snapshot
+            if not snapshot.get('ready') or kind in self.ready_logged:
+                return
+            self.ready_logged.add(kind)
+            print('%sready after %.1fs (%s: %d)' % (
+                'schedules ' if scheduled else '', time.monotonic() - self.started_at,
+                kind, len(snapshot['tasks' if scheduled else 'rows'])), flush=True)
+
     def tail(self, path, factory):
         with self.lock:
             t = self.tails.get(path)
@@ -213,6 +240,7 @@ class Monitor:
         if self.cfg.demo:
             self.schedule_snapshot = demo.schedules(time.time())
             self.update_schedule_state()
+            self.log_ready(scheduled=True)
             return
         with self.lock:
             rows = list(self.snapshot.get('rows', []))
@@ -221,6 +249,7 @@ class Monitor:
         with self.lock:
             self.schedule_snapshot = snapshot
             self.update_schedule_state()
+            self.log_ready(scheduled=True)
 
     @staticmethod
     def schedule_key(task, run):
@@ -364,6 +393,7 @@ class Monitor:
                          'scan_ms': int((time.time() - now) * 1000), 'days': self.cfg.days, 'lang': self.lang,
                          'lang_locked': self.cfg.lock_lang, 'sources': self.sources(len(cfiles), len(threads)),
                          'summary': self.summary_info()}
+        self.log_ready()
         self.update_schedule_state()
         self.housekeep(now, xfiles, rows)
 
@@ -1100,6 +1130,8 @@ def page_url(cfg, create=True):
 
 
 def main(argv=None):
+    started_at = time.monotonic()
+    register_stack_dump()
     if os.name == 'nt':
         sys.exit('claude-codex-monitor: Windows is not supported; it runs on macOS and Linux.')
     cfg = parse_args(argv)
@@ -1127,7 +1159,7 @@ def main(argv=None):
         use_demo(cfg)
     C.configure(cfg.claude_dir, cfg.codex_dir, cfg.days)
     try:
-        mon = Monitor(cfg)
+        mon = Monitor(cfg, started_at=started_at)
     except ValueError as e:
         sys.exit('claude-codex-monitor: %s' % e)
     threading.Thread(target=mon.loop, daemon=True).start()
