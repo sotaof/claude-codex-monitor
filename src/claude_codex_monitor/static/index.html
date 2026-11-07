@@ -70,6 +70,11 @@ a{color:var(--run)}
 .consent.calm{border-color:var(--line);background:var(--surface2)}
 .consent .opts{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;margin-top:10px;font-size:13px;color:var(--muted)}
 .consent .opts label{display:inline-flex;align-items:center;gap:8px}
+.msrc{margin-top:12px;border-top:1px solid var(--line2);padding-top:10px;font-size:13px}
+.msrc-h{color:var(--muted);margin-bottom:6px}
+.msrc-r{display:flex;align-items:center;gap:12px;padding:5px 0}
+.msrc-n{display:flex;flex-direction:column;min-width:0;flex:1}
+.msrc-n .faint{font-size:12px}
 .consent select,.consent input{font:inherit;font-size:13px;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:5px 8px}
 .consent input{width:170px}
 .consent .foot{display:flex;gap:8px;align-items:center;margin-top:10px;font-size:12px}
@@ -618,10 +623,28 @@ let showConsent = false;
 function summaryHtml() {
   const s = snap.summary || {state: 'none'};
   if (s.state === 'none' || !showConsent) return '';
-  if (s.state === 'on') return `<div class="consent calm"><h3>${t('consent.close.title')}</h3><p class="lead">${esc(t('consent.close.lead'))}</p>${summaryOpts(s)}
+  if (s.state === 'on') return `<div class="consent calm"><h3>${t('consent.close.title')}</h3><p class="lead">${esc(t('consent.close.lead'))}</p>${summaryOpts(s)}${modelSourcesHtml(s)}
     <div class="foot"><span class="sp"></span><button class="btn" id="keepConsent">${t('consent.keep_on')}</button><button class="btn pri" data-consent="off">${t('consent.turn_off')}</button></div></div>`;
-  return `<div class="consent"><h3>${t('consent.open.title')}</h3><p class="lead">${esc(t('consent.open.lead'))}</p>${summaryOpts(s)}
+  return `<div class="consent"><h3>${t('consent.open.title')}</h3><p class="lead">${esc(t('consent.open.lead'))}</p>${summaryOpts(s)}${modelSourcesHtml(s)}
     <div class="foot"><span class="faint">${esc(t('consent.open.foot'))}</span><span class="sp"></span><button class="btn" id="keepConsent">${t('consent.off')}</button><button class="btn pri" data-consent="on">${t('consent.on')}</button></div></div>`;
+}
+// Everything that may be sent to the model: the main switch above covers all of them, each has a switch of its own
+function modelSourcesHtml(s) {
+  const list = s.sources || [];
+  if (list.length < 2) return '';             // only session summaries: the main switch says it all
+  const name = x => x.name === 'summary' ? t('model.source.summary') : ((x.label || {})[lang] || (x.label || {}).en || x.name);
+  const sends = x => x.name === 'summary' ? t('model.sends.summary') : ((x.sends || {})[lang] || (x.sends || {}).en || '');
+  return `<div class="msrc"><div class="msrc-h">${t('model.sources')}</div>${list.map(x => `<div class="msrc-r">
+    <span class="msrc-n"><b>${esc(name(x))}</b><span class="faint">${esc(t('model.sends', sends(x)))}${x.today != null ? ' · ' + esc(t('model.today', x.today)) : ''}</span></span>
+    <span class="${x.on ? 's-ok' : 'faint'}">${t(x.on ? 'model.on' : 'model.off')}</span>
+    <button class="btn" data-model-source="${esc(x.name)}" data-on="${x.on ? '0' : '1'}">${t(x.on ? 'model.turn_off' : 'model.turn_on')}</button></div>`).join('')}</div>`;
+}
+async function setModelSource(name, on) {
+  try {
+    const j = await getJson('/api/model_sources', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name, on})});
+    snap.summary = j.summary;
+  } catch (e) { toast(() => tm(e.userMessage || e.message)); }
+  render();
 }
 // Which local tool and model summarize; fixed when --summary or --model was given at startup
 const sumLabel = s => s.backend ? s.backend + ' · ' + (s.model || t('model.default')) : '';
@@ -977,6 +1000,8 @@ document.addEventListener('click', e => {
   if (cs0) { setConsent(cs0.dataset.consent); return; }
   if (el.closest('#summTag')) { showConsent = !showConsent; if (route().name !== 'list') location.hash = '#/'; render(); return; }
   if (el.id === 'keepConsent') { showConsent = false; render(); return; }
+  const msrc = el.closest('[data-model-source]');
+  if (msrc) { setModelSource(msrc.dataset.modelSource, msrc.dataset.on === '1'); return; }
   const close = el.closest('[data-close]');
   if (close) {
     e.stopPropagation();

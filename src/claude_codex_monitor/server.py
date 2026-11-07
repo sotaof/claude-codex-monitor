@@ -200,7 +200,10 @@ class Monitor:
             cfg.state_dir, cfg.codex_dir, C.CCD_DIR if cfg.desktop else None)
         # Plugins: other sources of things that need you. Never loaded with made-up data.
         self.item_state = sources.ItemState(os.path.join(cfg.state_dir, 'items.json'))
-        found, self.source_errors = ([], []) if cfg.demo else sources.load(cfg.state_dir, cfg.lang)
+        self.model_calls = {}          # source -> {'day', 'n'}: model calls made today, for the settings panel
+        self.summ.active = self.model_allowed('summary')
+        found, self.source_errors = ([], []) if cfg.demo else sources.load(cfg.state_dir, cfg.lang,
+                                                                           model_for=self.model_gate)
         self.pollers = [sources.Poller(s) for s in found]
         C.set_tail_func(self.tail)
 
@@ -454,8 +457,53 @@ class Monitor:
         with open(tmp, 'w', encoding='utf-8') as f:
             json.dump(self.consent, f)
         os.replace(tmp, self.consent_path)
-        self.summ.active = decision == 'on'
+        self.summ.active = self.model_allowed('summary')
         self.snapshot = dict(self.snapshot, summary=self.summary_info())
+
+    # ---- model use: one main switch, one switch per source, one tool for all ----
+    def source_on(self, name):
+        """Every source may use the model unless you switched it off in the page."""
+        return (self.settings.get('model_sources') or {}).get(name, True) is not False
+
+    def model_allowed(self, name):
+        return self.summary_state() == 'on' and self.source_on(name)
+
+    def model_gate(self, name):
+        return sources.ModelGate(name, lambda: self.model_allowed(name),
+                                 lambda system, prompt, timeout: self.backend.complete(system, prompt, timeout),
+                                 lambda: self.count_model(name), lambda: self.backend.label if self.backend else '')
+
+    def count_model(self, name):
+        day = time.strftime('%Y-%m-%d')
+        with self.lock:
+            c = self.model_calls.get(name)
+            if not c or c['day'] != day:
+                c = self.model_calls[name] = {'day': day, 'n': 0}
+            c['n'] += 1
+
+    def model_sources(self):
+        day = time.strftime('%Y-%m-%d')
+        today = lambda n: (self.model_calls.get(n) or {}).get('n', 0) if (self.model_calls.get(n) or {}).get('day') == day else 0
+        out = [{'name': 'summary', 'label': None, 'sends': None, 'on': self.source_on('summary'), 'today': None}]
+        for p in getattr(self, 'pollers', []):
+            if isinstance(p.source.model_use, dict):
+                out.append({'name': p.source.name, 'label': p.source.label, 'sends': p.source.model_use,
+                            'on': self.source_on(p.source.name), 'today': today(p.source.name)})
+        return out
+
+    def set_model_source(self, name, on):
+        if name not in {s['name'] for s in self.model_sources()} or not isinstance(on, bool):
+            raise ValueError(name)
+        self.settings = dict(self.settings, model_sources=dict(self.settings.get('model_sources') or {}, **{name: on}))
+        self.save_settings()
+        self.summ.active = self.model_allowed('summary')
+        self.snapshot = dict(self.snapshot, summary=self.summary_info())
+
+    def save_settings(self):
+        tmp = self.settings_path + '.tmp'
+        with open(tmp, 'w', encoding='utf-8') as f:
+            json.dump(self.settings, f)
+        os.replace(tmp, self.settings_path)
 
     def summary_method(self):
         s = self.settings.get('summary')
@@ -483,11 +531,8 @@ class Monitor:
             raise ValueError(method)
         models = dict(self.settings.get('models') or {})
         models[backend.name] = backend.model if backend.model != backend.default_model else ''
-        self.settings = {'summary': method, 'models': models}
-        tmp = self.settings_path + '.tmp'
-        with open(tmp, 'w', encoding='utf-8') as f:
-            json.dump(self.settings, f)
-        os.replace(tmp, self.settings_path)
+        self.settings = dict(self.settings, summary=method, models=models)      # keeps the per-source switches
+        self.save_settings()
         self.backend = backend
         self.summ.set_backend(backend)
         self.snapshot = dict(self.snapshot, summary=self.summary_info())
@@ -499,7 +544,7 @@ class Monitor:
         b = self.backend
         return {'state': st, 'label': b.label, 'method': self.summary_method(), 'backend': b.name, 'model': b.model,
                 'locked': self.cfg.summary_fixed, 'installed': installed(), 'auto': resolve('auto'),
-                'claude_models': CLAUDE_MODELS}
+                'claude_models': CLAUDE_MODELS, 'sources': self.model_sources()}
 
     # ---- Child sessions launched with claude -p ----
     def link_cli(self, cfiles, threads, now):
@@ -1073,6 +1118,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     self.mon.set_summary(body.get('method'), model.strip() if isinstance(model, str) else None)
                 except ValueError:
                     return self._send(400, {'error': M('error.summary_settings')})
+                return self._send(200, {'ok': True, 'summary': self.mon.summary_info()})
+            if self.path == '/api/model_sources':
+                body = body if isinstance(body, dict) else {}
+                try:
+                    self.mon.set_model_source(body.get('name'), body.get('on'))
+                except ValueError:
+                    return self._send(400, {'error': M('error.model_source')})
                 return self._send(200, {'ok': True, 'summary': self.mon.summary_info()})
             if self.path == '/api/items':
                 body = body if isinstance(body, dict) else {}

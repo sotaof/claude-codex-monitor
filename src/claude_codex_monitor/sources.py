@@ -55,13 +55,40 @@ def day_window(now=None, boundary_hour=DAY_BOUNDARY_HOUR):
     return start.timestamp(), end.timestamp()
 
 
+class ModelOff(RuntimeError):
+    """The model is switched off for this source (or for everything), or no model tool is installed."""
+
+
+class ModelGate:
+    """The only way a source sends anything to a model. It uses the tool and model chosen in the page, and the main
+    switch and the source's own switch decide whether anything is sent at all."""
+    def __init__(self, name, allowed, complete, counted, label):
+        self.name = name
+        self._allowed, self._complete, self._counted, self._label = allowed, complete, counted, label
+
+    def allowed(self):
+        return bool(self._allowed())
+
+    def label(self):
+        """For example 'claude · sonnet', or '' when nothing can be sent."""
+        return self._label() if self.allowed() else ''
+
+    def complete(self, prompt, system='', timeout=240):
+        if not self.allowed():
+            raise ModelOff(self.name)
+        text = self._complete(system, prompt, timeout)
+        self._counted()
+        return text
+
+
 class Context:
     """What a source gets from the monitor."""
-    def __init__(self, name, state_dir, lang, demo=False):
+    def __init__(self, name, state_dir, lang, demo=False, model=None):
         self.name = name
         self.state_dir = state_dir      # the source's own folder: <state dir>/ext/<name>, readable by you only
         self.lang = lang
         self.demo = demo
+        self.model = model              # a ModelGate, or None when the source does not say what it would send
 
 
 class Source:
@@ -71,6 +98,7 @@ class Source:
     interval = 60             # seconds between polls
     static_dir = None         # folder with the files the tab needs, served at /ext/<name>/<file>
     tab_script = None         # file in static_dir that draws the tab, or None for no tab
+    model_use = None          # {'en': ..., 'zh': ...}: what it sends to the model. Without it, context.model is None
 
     def __init__(self, context):
         self.context = context
@@ -124,8 +152,9 @@ def _entry_points():
     return installed + _env_entry_points()
 
 
-def load(state_dir, lang='', demo=False, entry_points=None):
-    """Load the installed sources. Returns (sources, errors); errors are {'name', 'error'} for the page."""
+def load(state_dir, lang='', demo=False, entry_points=None, model_for=None):
+    """Load the installed sources. Returns (sources, errors); errors are {'name', 'error'} for the page.
+    model_for(name) returns the ModelGate a source that declares model_use gets."""
     found, errors, seen = [], [], set()
     for ep in _entry_points() if entry_points is None else entry_points:
         name = getattr(ep, 'name', '?')
@@ -136,9 +165,12 @@ def load(state_dir, lang='', demo=False, entry_points=None):
                 raise ValueError('another source already uses the name %r' % name)
             folder = os.path.join(state_dir, 'ext', name)
             os.makedirs(folder, mode=0o700, exist_ok=True)
-            src = ep.load()(Context(name, folder, lang, demo))
+            context = Context(name, folder, lang, demo)
+            src = ep.load()(context)
             if not isinstance(src, Source):
                 raise TypeError('%s did not return a Source' % name)
+            if model_for and isinstance(src.model_use, dict):     # read context.model when calling, not in __init__
+                context.model = model_for(name)
             src.name = name
             seen.add(name)
             found.append(src)

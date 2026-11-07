@@ -25,6 +25,7 @@ class Inbox(sources.Source):
     """A made-up source: two items, a tab and one API route."""
     label = {'en': 'Inbox', 'zh': '收件箱'}
     tab_script = 'tab.js'
+    model_use = {'en': 'message excerpts', 'zh': '消息片段'}
 
     def __init__(self, context):
         super().__init__(context)
@@ -215,6 +216,40 @@ class Http(unittest.TestCase):
         self.assertEqual((st, body[:7]), (200, b'CCMTabs'))
         for bad in ('/ext/inbox/..%2Fitems.json', '/ext/inbox/tab.exe', '/ext/missing/tab.js'):
             self.assertEqual(self.req('GET', bad)[0], 404, bad)
+
+    def test_model_gate_follows_both_switches(self):
+        gate = self.mon.pollers[0].source.context.model
+        backend = mock.Mock(label='claude · sonnet')
+        backend.complete.return_value = '[]'
+        with mock.patch.object(self.mon, 'backend', backend), \
+                mock.patch.object(self.mon, 'summary_state', return_value='on'):
+            self.assertTrue(gate.allowed())
+            self.assertEqual(gate.complete('hi', system='s'), '[]')
+            backend.complete.assert_called_once_with('s', 'hi', 240)
+            self.assertEqual(self.mon.model_sources()[1]['today'], 1)
+            self.mon.set_model_source('inbox', False)                  # only this source off
+            self.assertFalse(gate.allowed())
+            self.assertTrue(self.mon.model_allowed('summary'))
+            with self.assertRaises(sources.ModelOff):
+                gate.complete('hi')
+            self.mon.set_model_source('inbox', True)
+            with open(self.mon.settings_path) as f:
+                self.assertEqual(json.load(f)['model_sources'], {'inbox': True})
+        with mock.patch.object(self.mon, 'summary_state', return_value='off'):    # the main switch
+            self.assertFalse(gate.allowed())
+        with self.assertRaises(ValueError):
+            self.mon.set_model_source('nobody', False)
+
+    def test_model_source_api(self):
+        st, body = self.req('POST', '/api/model_sources', {'name': 'inbox', 'on': 'yes'})
+        self.assertEqual(st, 400)
+        self.assertEqual(self.req('POST', '/api/model_sources', {'name': 'inbox', 'on': True})[0], 200)
+
+    def test_a_source_that_sends_nothing_gets_no_model(self):
+        class Quiet(sources.Source):
+            pass
+        found, _ = sources.load(tempfile.mkdtemp(), entry_points=[EP('quiet', Quiet)], model_for=self.mon.model_gate)
+        self.assertIsNone(found[0].context.model)
 
     def test_pages_need_the_token_when_set(self):
         self.srv.token, self.srv.token_file = 'secret', os.path.join(self.mon.cfg.state_dir, 'token')
