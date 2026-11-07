@@ -137,7 +137,7 @@ window.Today = (() => {
     if (b) { itemAction(b.dataset.todayKey, b.dataset.todayAct); return true; }
     const rt = route(location.hash);
     const tab = rt && rt.name === 'ext' && window.CCMTabs.get(rt.ext);
-    if (tab && tab.click) return !!tab.click(event, {act: itemAction});
+    if (tab && tab.click) return !!tab.click(event, {act: itemAction, api: (path, opt) => getJson('/api/ext/' + rt.ext + '/' + path, opt)});
     return false;
   }
   return {route, refresh, render, click, badge, extLinks, windowLabel, needsYou};
