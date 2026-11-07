@@ -26,3 +26,26 @@
 @media (max-width:640px){.tday{padding:12px}}
 .tkbtn{border:0;cursor:pointer;font:inherit;font-size:11.5px;font-weight:600}
 .tkbtn:hover{filter:brightness(.95);text-decoration:underline}
+
+/* Today, one list: what needs you from every source on one line each; the rest folds away */
+.tsec{margin:0 0 12px}
+.tsec-h{display:flex;align-items:center;gap:6px;width:100%;margin:0 0 8px;padding:0;border:0;background:none;font:inherit;font-size:14px;color:var(--ink);text-align:left}
+button.tsec-h{cursor:pointer;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+button.tsec-h:hover{background:var(--hover)}
+.tlist{border:1px solid var(--line);border-radius:10px;background:var(--surface);overflow:hidden}
+.trow{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--line2);font-size:13px}
+.trow:last-child{border-bottom:0}
+.trow:hover{background:var(--hover)}
+.trow .cl,.trow .tk{flex:none}
+.trow .tmain{flex:1;min-width:0;flex-direction:row;align-items:baseline;gap:10px}
+.trow .tmain a,.trow .tmain b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:0 1 auto;max-width:60%}
+.trow .tsub{flex:1 1 0;min-width:0}
+.twhen{flex:none;color:var(--faint);font-size:12px;white-space:nowrap}
+.trow .tacts{margin-left:0}
+.trow a.tbtn{text-decoration:none;display:inline-block}
+.cl.c-ext{background:var(--st-bg,var(--line2));color:var(--muted)}
+.tsec-more{display:block;width:100%;padding:8px 12px;border:0;border-top:1px solid var(--line2);background:none;color:var(--run);font:inherit;font-size:12.5px;text-align:left;cursor:pointer}
+.tstatus{margin-top:14px;font-size:12.5px;color:var(--muted)}
+.tstatus a{color:var(--muted);text-decoration:none}.tstatus a:hover{text-decoration:underline}.tstatus a.bad{color:var(--fail)}
+@media (max-width:760px){.trow{flex-wrap:wrap}.trow .tmain{flex-basis:100%;order:3;flex-direction:column;gap:0}.trow .tmain a,.trow .tmain b{max-width:100%}
+  .trow .twhen{margin-left:auto}.trow .tacts{order:4;margin-left:auto}}      /* tags and time, then the title, then the buttons */

@@ -13,7 +13,6 @@ window.Today = (() => {
   // Within a day: how long ago; older: the date and time, which is easier to place than "4 days 2 hours ago"
   const ago = ts => !ts ? '' : Date.now() / 1000 - ts < 86400 ? t('time.ago', dur(Math.max(0, Date.now() / 1000 - ts))) : md(ts) + ' ' + hm(ts);
   const isOpen = item => item.open && !item.handled;
-  const SHOW = 8;                                     // per column; the rest is one click away
   // Sessions: the same last 3 days the session list shows by default; older waits are usually abandoned
   const agents = () => data ? data.agents.filter(a => (a.since || 0) >= midnight(2)) : [];
 
@@ -77,41 +76,64 @@ window.Today = (() => {
       `<button class="tbtn${a === 'done' ? ' pri' : ''}" data-today-act="${a}" data-today-key="${esc(item.key)}"${busy.has(item.key) ? ' disabled' : ''}>${t('today.act.' + (a === 'done' && item.kind === 'waiting' ? 'received' : a))}</button>`).join('')}</span>`;
     return line(opts.href || item.url, tag, item.title || item.text, sub + (opts.extra || ''), acts);
   }
-  function column(title, lines, more) {
-    const rest = lines.length - SHOW;
-    return `<section class="tcol"><h3><span>${title}</span><span class="faint">${lines.length}</span></h3>${lines.length ? lines.slice(0, SHOW).join('') : `<div class="tempty">${t('today.empty')}</div>`}` +
-      (rest > 0 ? `<div class="tempty">${t('today.more', rest)}</div>` : '') + (more || '') + '</section>';
+  // ---- Today: one list of what needs you, from every source; the rest folded away ----
+  let order = 'old';                                  // the longest-waiting first: what to do next
+  const unfolded = new Set();
+  const LIST = 15;
+  function actsOf(item) {
+    return item.handled ? '' : `<span class="tacts">${['done', 'skip'].map(a =>
+      `<button class="tbtn${a === 'done' ? ' pri' : ''}" data-today-act="${a}" data-today-key="${esc(item.key)}"${busy.has(item.key) ? ' disabled' : ''}>${t('today.act.' + (a === 'done' && item.kind === 'waiting' ? 'received' : a))}</button>`).join('')}</span>`;
+  }
+  function trow(href, tags, title, sub, when, acts) {
+    return `<div class="trow">${tags}<span class="tmain">${href ? `<a href="${href}" title="${esc(title)}">${esc(title)}</a>` : `<b>${esc(title)}</b>`}
+      ${sub ? `<span class="tsub">${sub}</span>` : ''}</span><span class="twhen">${esc(when)}</span>${acts || ''}</div>`;
+  }
+  const srcTag = (cls, text) => `<span class="cl ${cls}">${esc(text)}</span>`;
+  function sourceRow(s, i) {
+    const href = s.tab ? '#/x/' + s.name + '/' + encodeURIComponent(i.key) : i.url;
+    const tags = srcTag('c-ext', label(s)) + `<span class="tk k-${i.kind}">${esc(kindName(i.kind))}</span>`;
+    return {since: i.since || 0, html: trow(href, tags, i.title || i.text, [i.who, i.where].filter(Boolean).map(esc).join(' · '), ago(i.since), actsOf(i))};
+  }
+  function section(key, title, n, rows, foldable) {
+    const open = !foldable || unfolded.has(key);
+    const head = foldable
+      ? `<button class="tsec-h" data-today-fold="${key}" aria-expanded="${open}"><span class="faint">${open ? '▾' : '▸'}</span> <b>${title}</b> <span class="faint">${n}</span></button>`
+      : `<div class="tsec-h"><b>${title}</b> <span class="faint">${n}</span><span class="sp"></span>${sortSeg('data-today-order', order, [['old', t('today.sort_longest')], ['new', t('sort.newest')]])}</div>`;
+    if (!open) return `<section class="tsec">${head}</section>`;
+    const sorted = rows.slice().sort((a, b) => order === 'old' ? a.since - b.since : b.since - a.since);
+    const more = sorted.length > LIST && !unfolded.has(key + ':all') ? `<button class="tsec-more" data-today-fold="${key}:all">${t('today.more', sorted.length - LIST)}</button>` : '';
+    const shown = unfolded.has(key + ':all') ? sorted : sorted.slice(0, LIST);
+    return `<section class="tsec">${head}<div class="tlist">${shown.map(r => r.html).join('') || `<div class="tempty">${t(key === 'act' ? 'today.empty_act' : 'today.empty')}</div>`}${more}</div></section>`;
   }
   function renderToday() {
     if (error && !data) return `<div class="empty">${esc(tm(error))}</div>`;
     if (!data) return `<div class="loading">${t('loading.detail')}</div>`;
+    const act = [], confirm = [], others = [];
     // Sessions close here as on the session list (a new message brings them back)
-    const close = a => `<span class="tacts"><button class="tbtn" data-today-close="${esc(a.key)}" title="${esc(t('list.dismiss_hint'))}">${t('common.close')}</button></span>`;
-    const sessions = agents().sort((a, b) => (b.since || 0) - (a.since || 0)).map(a => line('#/s/' + encodeURIComponent(a.key),
-      `<span class="cl c-${esc(a.client)}">${a.client === 'claude' ? 'Claude' : 'Codex'}</span>`, a.title, esc(tm(a.text) || ago(a.since)), close(a)));
-    const tasks = data.schedules.map(s => line('#/schedules/' + s.source + '/' + encodeURIComponent(s.id),
-      `<span class="cl c-${esc(s.source)}">${esc(t('schedule.source.' + s.source))}</span>`, s.title,
-      esc(t('schedule.result.' + s.status) + (s.summary ? ' · ' + tm(s.summary) : ''))));
-    let cols = column(t('today.agents'), sessions, `<a class="tmore" href="#/">${t('today.go', t('schedule.sessions'))}</a>`) +
-      column(t('today.schedules'), tasks, `<a class="tmore" href="#/schedules">${t('today.go', t('schedule.title'))}</a>`);
-    const others = [];
-    for (const s of data.sources) {
-      const open = s.items.filter(isOpen);
-      const act = open.filter(i => ACT_KINDS.includes(i.kind));
-      others.push(...open.filter(i => !ACT_KINDS.includes(i.kind) && (i.kind !== 'info' || (i.since || 0) >= data.window.start)));
-      const err = s.error ? `<div class="terr">${esc(t('today.source_error', label(s), s.error))}</div>` : '';
-      // A source with a tab: the title opens that item there, expanded
-      const lineOf = i => itemLine(i, s.tab ? {href: '#/x/' + s.name + '/' + encodeURIComponent(i.key)} : {});
-      cols += column(esc(label(s)) + ' · ' + t('today.needs_you'), act.map(lineOf),
-        err + (s.tab ? `<a class="tmore" href="#/x/${esc(s.name)}">${t('today.go', esc(label(s)))}</a>` : ''));
+    for (const a of agents()) act.push({since: a.since || 0, html: trow('#/s/' + encodeURIComponent(a.key),
+      srcTag('c-' + a.client, a.client === 'claude' ? 'Claude' : 'Codex'), a.title, esc(tm(a.text) || ''), ago(a.since),
+      `<span class="tacts"><button class="tbtn" data-today-close="${esc(a.key)}" title="${esc(t('list.dismiss_hint'))}">${t('common.close')}</button></span>`)});
+    for (const s of data.schedules) act.push({since: s.since || 0, html: trow('#/schedules/' + s.source + '/' + encodeURIComponent(s.id),
+      srcTag('c-' + s.source, t('schedule.source.' + s.source)), s.title, esc(t('schedule.result.' + s.status) + (s.summary ? ' · ' + tm(s.summary) : '')),
+      ago(s.since), `<span class="tacts"><a class="tbtn" href="#/schedules/${s.source}/${encodeURIComponent(s.id)}">${t('today.go_fix')} ›</a></span>`)});
+    for (const s of data.sources) for (const i of s.items.filter(isOpen)) {
+      if (ACT_KINDS.includes(i.kind)) act.push(sourceRow(s, i));
+      else if (i.kind === 'confirm') confirm.push(sourceRow(s, i));
+      else if (i.kind !== 'info' || (i.since || 0) >= data.window.start) others.push(sourceRow(s, i));
     }
-    const otherLine = i => {
-      const s = data.sources.find(x => x.name === i.source);
-      return itemLine(i, s && s.tab ? {href: '#/x/' + s.name + '/' + encodeURIComponent(i.key)} : {});
-    };
-    if (data.sources.length) cols += column(t('today.waiting_info'), others.map(otherLine));
-    const errs = (data.source_errors || []).map(e => `<div class="terr">${esc(t('today.source_error', e.name, e.error))}</div>`).join('');
-    return `<div class="tday"><p class="tlead"><b>${esc(t('today.range', windowLabel()))}</b> ${t('today.lead', needsYou())}</p>${errs}<div class="tgrid">${cols}</div></div>`;
+    // One line on how each source is doing, instead of empty columns
+    const status = [
+      `<a href="#/">${esc(agents().length ? t('today.st.sessions', agents().length) : t('today.st.sessions_none'))}</a>`,
+      `<a href="#/schedules">${esc(data.schedules.length ? t('today.st.schedules', data.schedules.length) : t('today.st.schedules_ok'))}</a>`,
+      ...data.sources.map(s => `<a href="${s.tab ? '#/x/' + s.name : '#/today'}" class="${s.error ? 'bad' : ''}">${esc(s.error ? t('today.st.source_error', label(s)) : t('today.st.source', label(s), s.polled ? dur(Math.max(0, Date.now() / 1000 - s.polled)) : '—'))}</a>`),
+    ].join('<span class="faint"> · </span>');
+    const errs = (data.source_errors || []).concat(data.sources.filter(s => s.error).map(s => ({name: label(s), error: s.error})))
+      .map(e => `<div class="terr">${esc(t('today.source_error', e.name, e.error))}</div>`).join('');
+    return `<div class="tday"><p class="tlead"><b>${esc(t('today.range', windowLabel()))}</b> ${esc(t('today.summary', act.length, confirm.length, others.length))}</p>${errs}
+      ${section('act', t('today.act_title'), act.length, act, false)}
+      ${confirm.length ? section('confirm', t('today.confirm'), confirm.length, confirm, true) : ''}
+      ${others.length ? section('others', t('today.waiting_info'), others.length, others, true) : ''}
+      <div class="tstatus">${status}</div></div>`;
   }
   function renderExt(rt) {
     const s = data && data.sources.find(x => x.name === rt.ext);
@@ -157,6 +179,10 @@ window.Today = (() => {
     } catch (e) { toast(e.userMessage || e.message); }
   }
   function click(event) {
+    const fold = event.target.closest('[data-today-fold]');
+    if (fold) { const k = fold.dataset.todayFold; unfolded.has(k) ? unfolded.delete(k) : unfolded.add(k); window.render(); return true; }
+    const od = event.target.closest('[data-today-order]');
+    if (od) { order = od.dataset.todayOrder; window.render(); return true; }
     const c = event.target.closest('[data-today-close]');
     if (c) { closeSession(c.dataset.todayClose); return true; }
     const b = event.target.closest('[data-today-act]');

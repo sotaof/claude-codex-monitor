@@ -42,7 +42,7 @@ the plugin's own state folder, `<state dir>/ext/<name>/`, which `context.state_d
 | Field | Meaning |
 | --- | --- |
 | `key` | Unique within the source; required |
-| `kind` | What you have to do next: `reply`, `approve`, `deliver`, `waiting` (on someone else), `alert`, `info` |
+| `kind` | What you have to do next: `reply`, `approve`, `deliver`, `waiting` (on someone else), `alert`, `info`, `confirm` (the source is not sure; you decide) |
 | `title`, `text` | One line, and the message or an excerpt |
 | `who`, `where` | Who it is from, and where (a chat, a group, a queue) |
 | `since` | When it started waiting, in seconds |

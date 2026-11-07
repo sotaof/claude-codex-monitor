@@ -32,7 +32,7 @@ import traceback
 
 ENTRY_POINT_GROUP = 'claude_codex_monitor.sources'
 DAY_BOUNDARY_HOUR = 4          # "today" lasts until 04:00 the next morning
-KINDS = ('reply', 'approve', 'deliver', 'waiting', 'alert', 'info')
+KINDS = ('reply', 'approve', 'deliver', 'waiting', 'alert', 'info', 'confirm')     # confirm: the source is not sure; you decide
 ACTIONS = ('done', 'skip', 'restore')
 NAME_RE = re.compile(r'^[a-z][a-z0-9-]{0,31}$')
 STATIC_RE = re.compile(r'^[A-Za-z0-9_-]+\.(js|css|svg|png)$')
