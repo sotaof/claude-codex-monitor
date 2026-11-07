@@ -28,15 +28,13 @@ window.Today = (() => {
       data.sources.reduce((n, s) => n + s.items.filter(i => isOpen(i) && ACT_KINDS.includes(i.kind)).length, 0);
   }
   function badge() {
-    const n = needsYou();
-    return n ? `<span class="badge" title="${t('today.badge')}">${n}</span>` : '';
+    return '';             // the navigation shows no counts; each page says how many there are
   }
   function extLinks(active) {
     if (!data) return '';
     return data.sources.filter(s => s.tab).map(s => {
       const on = active && active.name === 'ext' && active.ext === s.name;
-      const n = s.items.filter(i => isOpen(i) && ACT_KINDS.includes(i.kind)).length;
-      return `<a href="#/x/${esc(s.name)}" class="${on ? 'on' : ''}"${on ? ' aria-current="page"' : ''}>${esc(label(s))}${n ? `<span class="badge">${n}</span>` : ''}</a>`;
+      return `<a href="#/x/${esc(s.name)}" class="${on ? 'on' : ''}"${on ? ' aria-current="page"' : ''}>${esc(label(s))}</a>`;
     }).join('');
   }
   function label(s) {

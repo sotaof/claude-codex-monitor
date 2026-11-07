@@ -45,8 +45,7 @@ window.Schedules = (() => {
     } catch (e) { return {name: 'schedules'}; }
   }
   function navLink(active) {
-    const n = data ? data.tasks.filter(task => task.group === 'fail').length : 0;
-    return `<a href="#/schedules" class="${active ? 'on' : ''}"${active ? ' aria-current="page"' : ''}>${t('schedule.title')}${n ? `<span class="badge" title="${t('schedule.badge')}">${n}</span>` : ''}</a>`;
+    return `<a href="#/schedules" class="${active ? 'on' : ''}"${active ? ' aria-current="page"' : ''}>${t('schedule.title')}</a>`;
   }
   function nav(active) {
     return `<nav class="nav" aria-label="${t('schedule.navigation')}"><a href="#/" class="${active ? '' : 'on'}"${active ? '' : ' aria-current="page"'}>${t('schedule.sessions')}</a>
