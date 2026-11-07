@@ -115,7 +115,7 @@ window.Schedules = (() => {
     let html = `<div class="tools"><span class="lb">${t('schedule.source')}</span><div class="sg">${['all', 'launchd', 'claude', 'codex'].map(s =>
       `<button data-schedule-source="${s}" class="${source === s ? 'on' : ''}" aria-pressed="${source === s}">${s === 'all' ? t('common.all') : sourceName(s)} <span class="faint">${s === 'all' ? data.tasks.length : data.tasks.filter(task => task.source === s).length}</span></button>`).join('')}</div>
       <span class="sp"></span><span class="lb">${t('schedule.sort')}</span><div class="sg">${['recent', 'next'].map(s =>
-      `<button data-schedule-sort="${s}" class="${sort === s ? 'on' : ''}" aria-pressed="${sort === s}">${t('schedule.sort_' + s)}</button>`).join('')}</div></div>
+      `<button data-schedule-sort="${s}" class="${sort === s ? 'on' : ''}" aria-pressed="${sort === s}">${t('schedule.sort_' + s)}</button>`).join('')}</div><span class="faint">${t('schedule.refresh', 45)}</span></div>
       <div class="stcards">${groups.map(g => `<button class="scard k-${g} ${card === g ? 'on' : ''}" data-schedule-card="${g}" aria-pressed="${card === g}">
         <span class="lb"><span class="dot d-${g === 'svc' ? 'off' : g}"></span>${t('schedule.group.' + g)}</span>
         <span class="n">${count(g)}</span><span class="ctx" title="${esc(ctx[g])}">${esc(ctx[g])}</span></button>`).join('')}</div>`;

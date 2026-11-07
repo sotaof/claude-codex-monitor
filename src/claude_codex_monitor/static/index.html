@@ -93,7 +93,12 @@ a{color:var(--run)}
 .brand{display:flex;align-items:center;gap:9px;min-width:0}
 .logo{display:block;width:24px;height:24px;flex:none}
 .brand h1{margin:0;font-size:18px;letter-spacing:-.01em}
-.top .meta{color:var(--muted);font-size:13px}
+.tools .tmeta{color:var(--muted);font-size:13px;white-space:nowrap}
+.tset{display:flex;align-items:center;gap:8px;flex:none}
+@media (max-width:1280px){                 /* four views and three settings: the menus show icons only */
+  .ddbtn>span,.ddbtn .chev{display:none}
+  .ddbtn{padding:5px 7px}
+}
 .summ{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 10px;background:var(--surface)}
 .summ:hover{border-color:var(--line-hover)}
 .summ .dot{width:7px;height:7px;background:var(--faint)}
@@ -353,7 +358,7 @@ function settingsHtml() {
   const tag = s.state === 'none' ? '' : `<button class="summ ${s.state}" id="summTag" title="${esc(sumLabel(s))}"><span class="dot"></span>${esc(t('summary.tag_' + s.state))}</button>`;
   const themeMenu = dropdown('ddTheme', t('theme.' + theme), ICON[theme], [['system', t('theme.system'), t('theme.default')], ['light', t('theme.light')], ['dark', t('theme.dark')]], theme);
   const langMenu = snap && snap.lang_locked ? '' : dropdown('ddLang', lang === 'zh' ? '简体中文' : 'English', ICON.globe, [['en', 'English'], ['zh', '简体中文']], lang);
-  return tag + themeMenu + langMenu;
+  return `<div class="tset">${tag}${themeMenu}${langMenu}</div>`;     // one group: it never splits across lines
 }
 function brand() { return `<div class="brand"><img class="logo" src="/favicon.svg" alt=""><h1>${t('app.title')}</h1></div>`; }
 function staticText() {
@@ -542,13 +547,8 @@ function render() {
 }
 
 function topBar() {
-  const vis = ((snap && snap.rows) || []).filter(r => !isDismissed(r) && inRange(r));
-  const cc = vis.filter(r => r.client === 'claude').length, xc = vis.length - cc;
-  const dayName = span() === 0 ? t('time.today') : t('header.last_days', span() + 1);
-  const rt = route(), scheduling = rt.name === 'schedules';
-  const meta = scheduling ? t('schedule.refresh', 45) : rt.name === 'today' ? Today.windowLabel() :
-    rt.name === 'ext' ? '' : t('header.clients', dayName, cc, xc);
-  return `<div class="top">${brand()}${navBar(rt)}<span class="meta">${esc(meta)}</span><span class="sp"></span>${settingsHtml()}</div>`;
+// The header holds the title, the views and the settings only; each page says its own range and counts
+  return `<div class="top">${brand()}${navBar(route())}<span class="sp"></span>${settingsHtml()}</div>`;
 }
 // Views: Today (the home page), sessions, scheduled tasks, then the tabs source plugins add
 function navBar(rt) {
@@ -558,7 +558,13 @@ function navBar(rt) {
     Today.extLinks(rt) + '</nav>';
 }
 function toolBar() {
-  return `<div class="tools"><label class="search">${ICON.search}<input id="search" placeholder="${t('search.placeholder')}" aria-label="${t('search.label')}" value="${esc(query)}"><kbd>/</kbd></label><span class="sp"></span>
+function sessionsMeta() {
+  const vis = ((snap && snap.rows) || []).filter(r => !isDismissed(r) && inRange(r));
+  const cc = vis.filter(r => r.client === 'claude').length, xc = vis.length - cc;
+  const dayName = span() === 0 ? t('time.today') : t('header.last_days', span() + 1);
+  return `<span class="tmeta">${esc(t('header.clients', dayName, cc, xc))}</span>`;
+}
+  return `<div class="tools"><label class="search">${ICON.search}<input id="search" placeholder="${t('search.placeholder')}" aria-label="${t('search.label')}" value="${esc(query)}"><kbd>/</kbd></label><span class="sp"></span>${sessionsMeta()}
     <div class="sg" id="clientSeg">${[['all', t('common.all')], ['claude', 'Claude'], ['codex', 'Codex']].map(([c, n]) => `<button data-client="${c}" class="${client === c ? 'on' : ''}">${n}</button>`).join('')}</div>
     <div class="sg" id="dateSeg">${dateOptions().map(d => `<button data-days="${d}" class="${span() === d ? 'on' : ''}">${d ? t('header.days', d + 1) : t('time.today')}</button>`).join('')}</div></div>`;
 }

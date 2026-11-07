@@ -111,7 +111,7 @@ window.Today = (() => {
     };
     if (data.sources.length) cols += column(t('today.waiting_info'), others.map(otherLine));
     const errs = (data.source_errors || []).map(e => `<div class="terr">${esc(t('today.source_error', e.name, e.error))}</div>`).join('');
-    return `<div class="tday"><p class="tlead">${t('today.lead', needsYou())}</p>${errs}<div class="tgrid">${cols}</div></div>`;
+    return `<div class="tday"><p class="tlead"><b>${esc(t('today.range', windowLabel()))}</b> ${t('today.lead', needsYou())}</p>${errs}<div class="tgrid">${cols}</div></div>`;
   }
   function renderExt(rt) {
     const s = data && data.sources.find(x => x.name === rt.ext);
