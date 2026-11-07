@@ -46,7 +46,7 @@ the plugin's own state folder, `<state dir>/ext/<name>/`, which `context.state_d
 | `title`, `text` | One line, and the message or an excerpt |
 | `who`, `where` | Who it is from, and where (a chat, a group, a queue) |
 | `since` | When it started waiting, in seconds |
-| `updated` | Last activity; new activity brings an item you put off with **Later** back at once |
+| `updated` | Last activity |
 | `due` | Deadline in seconds, or `None` |
 | `url` | Where to open it (`http` or `https` only) |
 | `open` | `False` once the source can tell it is over |
@@ -54,7 +54,7 @@ the plugin's own state folder, `<state dir>/ext/<name>/`, which `context.state_d
 `reply`, `approve`, `deliver` and `alert` count as needing you. `waiting` and `info` go to the
 **Waiting on others · FYI** column; `info` items show only on the day they arrived.
 
-**Done**, **Later** (until 9:00 the next morning) and **Not needed** are stored by the monitor in
+**Done** and **Not a to-do** are stored by the monitor in
 `<state dir>/items.json`, not by the plugin, so every source behaves the same. Each item stays until you handle it,
 whatever its date.
 

@@ -75,7 +75,7 @@ window.Today = (() => {
     const sub = [item.who, item.where, item.due ? t('today.due', fullLabel(item.due)) : ago(item.since)].filter(Boolean).map(esc).join(' · ');
     const tag = opts.kindMenu ? `<button class="tk k-${item.kind} tkbtn" data-kind-menu="${esc(item.key)}" title="${t('today.change_kind')}">${esc(kindName(item.kind))} ▾</button>`
       : `<span class="tk k-${item.kind}">${esc(kindName(item.kind))}</span>`;
-    const acts = item.handled ? '' : `<span class="tacts">${['done', 'later', 'skip'].map(a =>
+    const acts = item.handled ? '' : `<span class="tacts">${['done', 'skip'].map(a =>
       `<button class="tbtn${a === 'done' ? ' pri' : ''}" data-today-act="${a}" data-today-key="${esc(item.key)}"${busy.has(item.key) ? ' disabled' : ''}>${t('today.act.' + (a === 'done' && item.kind === 'waiting' ? 'received' : a))}</button>`).join('')}</span>`;
     return line(opts.href || item.url, tag, item.title || item.text, sub + (opts.extra || ''), acts);
   }
@@ -125,16 +125,9 @@ window.Today = (() => {
   function render(rt) { return rt.name === 'ext' ? renderExt(rt) : renderToday(); }
 
   async function itemAction(key, action) {
-    let until;
-    if (action === 'later') {               // later: the next 9:00 in the morning
-      const d = new Date(); d.setSeconds(0, 0);
-      if (d.getHours() >= 9) d.setDate(d.getDate() + 1);
-      d.setHours(9, 0, 0, 0);
-      until = d.getTime() / 1000;
-    }
     busy.add(key); window.render();
     try {
-      await getJson('/api/items', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({key, action, until})});
+      await getJson('/api/items', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({key, action})});
       await tell(key, action);
       await refresh(true);
       toast(() => t('today.toast.' + action), action === 'restore' ? null : async () => {

@@ -2,7 +2,7 @@
 
 A source is a plugin installed as a separate Python package. It registers a factory under the entry point group
 ``claude_codex_monitor.sources``; the factory gets a :class:`Context` and returns a :class:`Source`. The monitor
-polls each source in a thread of its own, keeps what you did with each item (done, later, not needed) in one place,
+polls each source in a thread of its own, keeps what you did with each item (done, not a to-do) in one place,
 and shows the items on the Today page and, if the source has one, on a tab of its own.
 
 Items are plain dicts::
@@ -13,7 +13,7 @@ Items are plain dicts::
      'who': 'Alex', 'where': 'Direct message',
      'text': 'the message, or a short excerpt',
      'since': 1700000000,       # when it started waiting (seconds)
-     'updated': 1700000500,     # last activity; new activity brings a "later" item back
+     'updated': 1700000500,     # last activity
      'due': None,               # deadline (seconds) or None
      'url': None,               # where to open it, if anywhere (http/https only)
      'open': True}              # False once the source can tell it is over
@@ -33,7 +33,7 @@ import traceback
 ENTRY_POINT_GROUP = 'claude_codex_monitor.sources'
 DAY_BOUNDARY_HOUR = 4          # "today" lasts until 04:00 the next morning
 KINDS = ('reply', 'approve', 'deliver', 'waiting', 'alert', 'info')
-ACTIONS = ('done', 'later', 'skip', 'restore')
+ACTIONS = ('done', 'skip', 'restore')
 NAME_RE = re.compile(r'^[a-z][a-z0-9-]{0,31}$')
 STATIC_RE = re.compile(r'^[A-Za-z0-9_-]+\.(js|css|svg|png)$')
 STATIC_TYPES = {'js': 'application/javascript; charset=utf-8', 'css': 'text/css; charset=utf-8',
@@ -233,7 +233,7 @@ class Poller:
 
 
 class ItemState:
-    """What you did with each plugin item: done, later (until a time) or skipped (not needed). One file for all."""
+    """What you did with each plugin item: done or skipped (not a to-do). One file for all."""
     def __init__(self, path):
         self.path = path
         self.lock = threading.Lock()
@@ -252,7 +252,7 @@ class ItemState:
             json.dump(self.data, f, ensure_ascii=False)
         os.replace(tmp, self.path)
 
-    def set(self, key, action, until=None, now=None):
+    def set(self, key, action, until=None, now=None):      # until: accepted and ignored, for old callers
         now = time.time() if now is None else now
         if action not in ACTIONS:
             raise ValueError(action)
@@ -261,13 +261,7 @@ class ItemState:
             if action == 'restore':
                 self.data.pop(key, None)
             else:
-                entry = {'state': action, 'at': now}
-                if action == 'later':
-                    until = _num(until)
-                    if until is None or until <= now:
-                        raise ValueError(until)
-                    entry['until'] = until
-                self.data[key] = entry
+                self.data[key] = {'state': action, 'at': now}
             self.save()
             return previous
 
@@ -281,15 +275,9 @@ class ItemState:
             self.save()
 
     def state(self, item, now):
-        """'done', 'skip', 'later' or None (it needs you). A "later" item comes back when its time comes or when
-        something new happens in it; done and skipped items stay put."""
-        entry = self.data.get(item['key'])
-        if not entry:
-            return None
-        if entry.get('state') == 'later':
-            if now >= entry.get('until', 0) or (item.get('updated') or 0) > entry.get('at', 0):
-                return None
-        return entry.get('state')
+        """'done', 'skip' or None (it needs you). Records left by older versions (such as "later") count as None."""
+        entry = self.data.get(item['key']) or {}
+        return entry.get('state') if entry.get('state') in ('done', 'skip') else None
 
     def prune(self, keep, before):
         """Forget items no source reports any more, once they are old."""

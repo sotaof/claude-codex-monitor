@@ -128,11 +128,11 @@ class State(unittest.TestCase):
         self.state.set('inbox:a', 'skip', now=300)
         self.assertEqual(self.state.state(dict(self.item, updated=999), 1000), 'skip')
 
-    def test_later_comes_back_on_time_or_with_news(self):
-        self.state.set('inbox:a', 'later', until=500, now=200)
-        self.assertEqual(self.state.state(self.item, 300), 'later')
-        self.assertIsNone(self.state.state(self.item, 500))                       # its time came
-        self.assertIsNone(self.state.state(dict(self.item, updated=250), 300))    # something new happened
+    def test_old_later_records_count_as_pending(self):
+        self.state.data['inbox:a'] = {'state': 'later', 'at': 200, 'until': 10 ** 10}
+        self.assertIsNone(self.state.state(self.item, 300))
+        with self.assertRaises(ValueError):
+            self.state.set('inbox:a', 'later')
 
     def test_restore_and_bad_input(self):
         self.state.set('inbox:a', 'done', now=200)
@@ -140,8 +140,6 @@ class State(unittest.TestCase):
         self.assertIsNone(self.state.state(self.item, 300))
         with self.assertRaises(ValueError):
             self.state.set('inbox:a', 'delete')
-        with self.assertRaises(ValueError):
-            self.state.set('inbox:a', 'later', until=100, now=200)               # in the past
 
     def test_prune_forgets_old_items_no_source_reports(self):
         self.state.set('inbox:a', 'done', now=100)
