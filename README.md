@@ -53,6 +53,19 @@ commands, `codex exec` and `claude -p` runs, new sessions it opened, workflows, 
 
 Light and dark themes, English and 简体中文. Session titles and text stay in the language they were written in.
 
+The **Scheduled tasks** tab lists local Launchd, Claude desktop and Codex tasks, with schedules, next runs and the
+last 50 run results. Failed, **Needs you** and missed tasks are grouped under **Needs attention**. Open a run to view its
+session or its launchd log excerpt. KeepAlive services have a separate card. This view is read-only: it cannot run,
+pause or edit a task. launchd history starts when monitoring begins.
+
+Run details show the next step: waiting items from the session, network or sign-in advice, or evidence for a
+missed trigger. **Ignore this run** handles one issue; **Mark all earlier issues as handled** handles earlier failed,
+missed or Needs you runs, excluding the latest. Both have Undo, also available beside each handled run.
+Handled results keep their original color as an outline with a check. Handling a Claude or Codex run also dismisses
+its session, and dismissing or restoring a session updates its runs. New messages invalidate dismissal as on the
+session page. A real user reply after a run ended, followed by more execution, also counts as handled; system
+notifications do not. Only the latest run determines Needs attention and the tab badge.
+
 <details><summary>Dark theme</summary>
 
 ![Session list in the dark theme](docs/images/list-dark.png)
@@ -74,6 +87,37 @@ What it reads, without changing anything:
 
 Every 3 seconds it reads only the lines added since the last read, works out each session's state, finds what each
 session is waiting for, and puts subtasks on a timeline.
+
+Scheduled tasks refresh separately every 45 seconds. The monitor reads Claude desktop's
+`claude-code-sessions/*/*/scheduled-tasks.json`, the referenced `SKILL.md` and `local_*.json` session records;
+Codex's `~/.codex/sqlite/codex.db` in read-only mode (falling back to `~/.codex/automations/*/automation.toml`);
+and only your `~/Library/LaunchAgents/*.plist`, plus `launchctl print`. Codex heartbeat runs are identified by the
+`<heartbeat><automation_id>…</automation_id>` marker in user messages, separately from ordinary user turns.
+Threads bound to heartbeat tasks remain readable from this tab even outside the session list's date range.
+No scheduler files are changed and no launchctl write operations are used. launchd has no historical run store:
+observations and log byte ranges are saved in `schedules-launchd.json` under the monitor state folder, up to 50
+records per label. Times and service uptime are based on observations; runs entirely between polls may be combined.
+Log excerpts are read on demand, masked and HTML-escaped. Without launchctl the Launchd source is empty.
+
+Claude runs are matched against scheduler dispatches in `~/Library/Logs/Claude/main*.log` within two minutes of
+creation. Unmatched runs are marked Manual; when log coverage is missing, timing within the grace window is used
+and labeled Inferred. Each trigger is checked separately, only within the last 30 days and after task creation;
+manual runs do not fill missed triggers. The grace period is 30 minutes plus configured jitter.
+The scheduler-log index reads only appended lines after its initial read. Opening a missed-run detail additionally
+reads `pmset -g log` and the desktop log index, cached for five minutes, to report sleep, desktop activity, dispatch
+and task updates. launchd loaded-state evidence comes only from the monitor's own observations. Missing evidence
+is Unknown when no historical state evidence is available.
+Recorded cron changes keep today's schedule from being applied to older runs. Explicit enabled/disabled log
+events can establish past task state; ordinary desktop log activity can establish that the app was running.
+Triggers during recorded disabled periods do not count as missed. When today's Claude configuration is enabled,
+the first update/save after disabling is an inferred re-enable time. Earlier unknown state is inferred from
+today's configuration. Each skipped period appears once as a gray history note, outside run counts.
+launchd uses only recorded loaded/Disabled observations; observation gaps are not assumed to be disabled.
+When state logs are unavailable, missed-run detection stays unchanged and the next-step guidance says the past
+disabled state could not be confirmed.
+`pmset` is never called by the 45-second collection loop. All these sources are read-only.
+Per-run handling uses the existing `dismissed.json` dictionary in the monitor state directory, with namespaced
+task/run keys and the same message timestamp boundary as session dismissal.
 
 It writes to `~/.claude-codex-monitor/` (or `--state-dir`), readable only by you: which sessions you dismissed, cached
 summaries, whether model summaries are on, which tool and model they use (`settings.json`), the page's access token
@@ -270,7 +314,9 @@ python3 run.py --demo --port 8769
 
 Standard library only. `collect.py` reads the logs, `server.py` works out each session's state and serves the page,
 `summarize.py` handles the rules and the model summaries, `autostart.py` the login item, and `static/` holds the page,
-its translations and the icons. See [CONTRIBUTING.md](CONTRIBUTING.md), and report security problems as described in
+its translations and the icons. `schedules.py` reads scheduled tasks and records launchd observations.
+When Node is available, the tests also run the page scripts without external packages; this is not a browser layout test.
+See [CONTRIBUTING.md](CONTRIBUTING.md), and report security problems as described in
 [SECURITY.md](SECURITY.md).
 
 ## License

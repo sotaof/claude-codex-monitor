@@ -1,0 +1,107 @@
+.top .nav{display:flex;gap:4px;align-self:stretch;align-items:center}
+.nav a{border-bottom:2px solid transparent;padding:8px 10px;color:var(--muted);text-decoration:none;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.nav a.on{color:var(--ink);font-weight:600;border-bottom-color:var(--ink)}
+.nav .badge{background:var(--fail);color:var(--surface);font-size:11px;font-weight:700;border-radius:999px;padding:0 6px;line-height:17px}
+.schedules{min-width:0}
+.schedules .tools .lb{font-size:12.5px;color:var(--faint)}
+.schedules .sg{flex-wrap:wrap;max-width:100%}
+.schedules .sg button{white-space:nowrap}
+.schedules .scard{border-radius:8px;min-width:0}
+.schedules .scard.k-svc{border-style:dashed}
+.schedules .scard.k-svc.on{color:var(--ink);background:var(--off-bg);border-color:var(--off-line);box-shadow:0 0 0 2px var(--off) inset}
+.schedules .scols,.schedules .srow{display:grid;grid-template-columns:62px minmax(150px,1.6fr) minmax(110px,1fr) minmax(130px,1.1fr) minmax(95px,.75fr) 193px;gap:12px;align-items:center;padding:0 22px}
+.schedules .scols{font-size:12px;color:var(--faint);padding-bottom:6px;border-bottom:1px solid var(--line2)}
+.schedules .srow{padding-top:11px;padding-bottom:11px;border-bottom:1px solid var(--line2);cursor:pointer;position:relative;text-decoration:none;color:inherit}
+.schedules .srow:hover{background:var(--hover)}
+.schedules .srow::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0}
+.schedules .srow.r-fail::before{background:var(--fail)}
+.schedules .srow.r-run::before{background:var(--run)}
+.schedules .name{font-weight:600;min-width:0}
+.schedules .name .title{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.schedules .name .id{display:block;font:12px var(--mono);color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:400}
+.schedules .cl{justify-self:start}
+.c-launchd{background:var(--back-bg);color:var(--back)}
+.schedules .sched,.schedules .next{font-size:13px;min-width:0;overflow-wrap:anywhere}
+.schedules .raw{display:block;font:11.5px var(--mono);color:var(--faint);overflow-wrap:anywhere}
+.schedules .sched .raw{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;overflow-wrap:normal}
+.schedules .last{font-size:13px;display:flex;flex-direction:column;gap:1px;min-width:0}
+.schedules .st{display:inline-flex;align-items:center;gap:6px;font-weight:600}
+.schedules .s-stuck{color:var(--wait)}
+.schedules .s-miss{color:var(--fail)}
+.schedules .s-unknown{color:var(--faint)}
+.schedules .why{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.schedules .strip{display:flex;gap:3px;align-items:center;width:193px;height:20px}
+.schedules .block{width:11px;height:16px;border-radius:3px;display:block;border:0;padding:0;flex:none}
+.schedules .block:not(.b-empty):hover{outline:2px solid var(--line-hover);outline-offset:1px}
+.schedules .b-ok{background:var(--ok-bar)}
+.schedules .b-fail{background:var(--fail)}
+.schedules .b-stuck{background:var(--wait)}
+.schedules .b-run{background:var(--run)}
+.schedules .b-miss{background:transparent;border:1.5px dashed var(--fail)}
+.schedules .b-empty,.schedules .b-unknown{background:var(--line2)}
+.schedules .b-unknown{border:1px solid var(--off)}
+.schedules .block.b-paused{width:3px;margin:0 4px;height:12px;border-radius:0;background:var(--off)}
+.schedules .handled{background:transparent;border:1.5px solid currentColor;color:var(--ok-bar);text-align:center;font:10px/13px var(--mono)}
+.schedules .b-fail.handled,.schedules .b-miss.handled{color:var(--fail)}
+.schedules .b-stuck.handled{color:var(--wait)}
+.schedules .b-miss.handled{border-style:dashed}
+.schedules .handled-label{display:block;color:var(--muted);font-size:12px}
+.schedules .legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--muted);padding:12px 22px}
+.schedules .legend i{width:10px;height:14px;border-radius:3px;display:inline-block}
+.schedules .dhead{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:16px 22px;border-bottom:1px solid var(--line2)}
+.schedules .dhead h2{margin:0;font-size:18px;overflow-wrap:anywhere;min-width:0}
+.schedules .back{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:4px 10px;text-decoration:none}
+.schedules h3{margin:0 0 10px;font-size:14px}
+.schedules .kv{display:grid;grid-template-columns:110px minmax(0,1fr);gap:6px 14px;font-size:13px;margin:0}
+.schedules .kv dt{color:var(--faint)}
+.schedules .kv dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.schedules .alert{border-radius:8px;padding:10px 14px;font-size:13px;margin-bottom:12px}
+.schedules .alert.fail{background:var(--fail-bg);border:1px solid var(--fail-line);color:var(--fail)}
+.schedules .alert.stuck{background:var(--wait-bg);border:1px solid var(--wait-line);color:var(--wait)}
+.schedules .alert b{display:block;margin-bottom:2px}
+.schedules .alert .text{color:var(--ink);overflow-wrap:anywhere}
+.schedules .alert h3{margin:12px 0 6px}
+.schedules .alert p{margin:6px 0;color:var(--ink)}
+.schedules .alert li{color:var(--ink);overflow-wrap:anywhere}
+.schedules .evidence{display:grid;grid-template-columns:minmax(0,210px) minmax(0,1fr);gap:4px 12px;margin:6px 0;color:var(--ink)}
+.schedules .evidence dd{margin:0}
+.schedules .actions{display:flex;flex-wrap:wrap;gap:8px 16px;margin:10px 0}
+.schedules .actions button{max-width:100%;white-space:normal;overflow-wrap:anywhere}
+.schedules .runs .open .logbtn{display:block;margin-top:5px}
+.schedules button:disabled{opacity:.5;cursor:wait}
+.schedules .rate{display:flex;flex-wrap:wrap;gap:22px;margin-bottom:12px;font-size:13px}
+.schedules .rate .big{font-size:22px;font-weight:700;display:block;line-height:1.2}
+.schedules .runs{width:100%;border-collapse:collapse;font-size:13px;table-layout:fixed}
+.schedules .runs th{text-align:left;font-weight:400;color:var(--faint);font-size:12px;padding:6px 8px;border-bottom:1px solid var(--line2)}
+.schedules .runs td{padding:9px 8px;border-bottom:1px solid var(--line2);vertical-align:top;overflow-wrap:anywhere}
+.schedules .runs .rr{cursor:pointer}
+.schedules .runs .rr:hover td{background:var(--hover)}
+.schedules .runs .pause-note td{color:var(--muted);background:var(--off-bg)}
+.schedules .runs .sel td{background:var(--run-bg)}
+.schedules .runs .open{width:132px}
+.schedules .runs .started{width:165px}
+.schedules .runs .result{width:130px}
+.schedules .runs .elapsed{width:100px}
+.schedules .logbtn{border:0;padding:0;background:none;color:var(--run);text-decoration:underline;font-size:13px}
+.schedules pre{background:var(--pre-bg);border-radius:8px;padding:10px 12px;margin:4px 0 0;font:12px/1.5 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;max-height:360px;overflow:auto}
+.schedules .history-note{font-size:12px;color:var(--faint);padding:10px 22px}
+.schedules .svc-row,.schedules .svc-cols{grid-template-columns:62px minmax(0,1.6fr) minmax(0,1fr) minmax(0,.6fr) minmax(0,1fr) minmax(0,1fr);cursor:default}
+.schedules .svc-row>*{min-width:0;overflow-wrap:anywhere}
+@media(max-width:1150px) and (min-width:900px){
+  .schedules .scols,.schedules .srow{gap:8px;padding-left:14px;padding-right:14px;grid-template-columns:58px minmax(100px,1.4fr) minmax(90px,1fr) minmax(100px,1fr) 86px 193px}
+}
+@media(max-width:899px){
+  .top .nav{order:3;width:100%}
+  .schedules .stcards{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .schedules .scols{display:none}
+  .schedules .srow{grid-template-columns:auto minmax(0,1fr);gap:4px 10px}
+  .schedules .srow .sched,.schedules .srow .last,.schedules .srow .next,.schedules .srow .strip{grid-column:1/-1}
+  .schedules .kv{grid-template-columns:90px minmax(0,1fr)}
+  .schedules .runs .hide-m{display:none}
+  .schedules .runs .started{width:23%}
+  .schedules .runs .result{width:22%}
+  .schedules .runs .open{width:23%}
+  .schedules .runs td,.schedules .runs th{padding:8px 4px}
+  .schedules .svc-row>*:nth-child(n+3){grid-column:1/-1}
+  .schedules .tools{gap:8px}
+}

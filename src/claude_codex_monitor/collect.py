@@ -372,6 +372,8 @@ class ClaudeSession:
         self.last_msg_ts = self.last_asst_ts = self.last_asst_text_ts = self.last_user_ts = None
         self.last_stop_reason = None
         self.last_hook_stop_ts = None
+        self.scheduled_run_end = self.scheduled_reply_ts = None
+        self.scheduled_session = False
         self.interrupted_ts = None
         self.api_error = None
         self.usage = {}                               # Message ID -> usage; deduplicate replies split across lines.
@@ -429,7 +431,11 @@ class ClaudeSession:
             return
         msg = d.get('message') or {}
         content = msg.get('content')
+        if t == 'user' and isinstance(content, str) and content.lstrip().startswith('<scheduled-task '):
+            self.scheduled_session = True
         if t == 'assistant':
+            if self.scheduled_session and msg.get('stop_reason') == 'end_turn' and not self.scheduled_reply_ts:
+                self.scheduled_run_end = ts
             self.last_asst_ts = ts
             if msg.get('model') and msg['model'] != '<synthetic>':
                 self.model = msg['model']
@@ -472,6 +478,9 @@ class ClaudeSession:
             return
         if not s or s.startswith('<') or s.startswith('Caveat:'):
             return
+        if (self.scheduled_run_end and not s.startswith('This session is being continued from a previous conversation')
+                and (parse_ts(ts) or 0) > (parse_ts(self.scheduled_run_end) or 0)):
+            self.scheduled_reply_ts = ts
         if any(x['role'] == 'user' and x['text'] == s for x in list(self.turns)[-6:]):
             return
         self.first_user = self.first_user or s
@@ -862,6 +871,19 @@ class CodexThread(ClaudeCallsMixin):
         self.turns.append({'role': 'assistant', 'ts': ts, 'text': text})
         self.last_asst_text_ts = self.last_msg_ts = ts
 
+    def _user(self, text, ts):
+        text = (text or '').strip()
+        heartbeat = re.match(r'^<heartbeat>\s*<automation_id>[^<]+</automation_id>', text)
+        if not text or (text.startswith('<') and not heartbeat):
+            return
+        same_turn = not self.turn_start or (parse_ts(self.last_user_ts) or 0) >= (parse_ts(self.turn_start) or 0)
+        if same_turn and any(x['role'] == 'user' and x['text'] == text for x in list(self.turns)[-3:]):
+            return
+        if not heartbeat:
+            self.first_user = self.first_user or text
+        self.turns.append({'role': 'user', 'ts': ts, 'text': text})
+        self.last_user_ts = self.last_msg_ts = ts
+
     def feed(self, d, raw):
         ts, t, p = d.get('timestamp'), d.get('type'), d.get('payload') or {}
         pt = p.get('type')
@@ -894,16 +916,11 @@ class CodexThread(ClaudeCallsMixin):
             item = p.get('item') or {}
             if item.get('type') == 'UserMessage':
                 txt = ' '.join(c.get('text', '') for c in item.get('content') or [] if isinstance(c, dict)).strip()
-                if txt and not txt.startswith('<'):
-                    self.first_user = self.first_user or txt
-                    self.turns.append({'role': 'user', 'ts': ts, 'text': txt})
-                    self.last_user_ts = self.last_msg_ts = ts
+                self._user(txt, ts)
         elif pt == 'user_message':
-            txt = (p.get('message') or '').strip()
-            if txt and not txt.startswith('<') and not any(x['role'] == 'user' and x['text'] == txt for x in list(self.turns)[-3:]):
-                self.first_user = self.first_user or txt
-                self.turns.append({'role': 'user', 'ts': ts, 'text': txt})
-                self.last_user_ts = self.last_msg_ts = ts
+            self._user(p.get('message'), ts)
+        elif pt == 'message' and p.get('role') == 'user':
+            self._user(' '.join(c.get('text', '') for c in p.get('content') or [] if isinstance(c, dict)), ts)
         elif pt == 'message' and p.get('role') == 'assistant':
             self._asst(' '.join(c.get('text', '') for c in p.get('content') or [] if isinstance(c, dict)), ts)
             self.pending = None

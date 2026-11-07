@@ -293,3 +293,87 @@ def build(root, now):
     with open(os.path.join(cdir, 'sessions', 'demo.json'), 'w', encoding='utf-8') as f:
         json.dump({'pid': os.getpid(), 'sessionId': _id('claude:ci'), 'status': 'busy', 'name': 'Migrate CI'}, f)
     return cdir, xdir
+
+
+def schedules(now):
+    """Made-up scheduled tasks, isolated from all local scheduler files and commands."""
+    from .collect import M
+    from .schedules import finish_task, once_description
+    cases = [
+        ('claude', 'content-check', 'Daily content check', 'fail', _key('claude', 'node')),
+        ('claude', 'review-plan', 'Review the release plan', 'stuck', _key('claude', 'webhooks')),
+        ('launchd', 'com.example.backup', 'com.example.backup', 'fail', None),
+        ('launchd', 'com.example.sync', 'com.example.sync', 'miss', None),
+        ('codex', 'theme-check', 'Check theme regressions', 'run', _key('codex', 'dark')),
+        ('claude', 'test-check', 'Daily test check', 'ok', _key('claude', 'tz')),
+        ('codex', 'weekly-notes', 'Weekly release notes', 'ok', _key('codex', 'badges')),
+        ('launchd', 'com.example.cleanup', 'com.example.cleanup', 'ok', None),
+        ('claude', 'cutover-check', 'One-time cutover check', None, None),
+        ('codex', 'paused-check', 'Paused dependency check', 'off', None),
+        ('claude', 'once-complete', 'One-time reminder', 'off', _key('claude', 'tz')),
+    ]
+    tasks = []
+    for i, (source, aid, title, status, key) in enumerate(cases):
+        enabled = status != 'off'
+        runs = []
+        if status is not None and (status != 'off' or key):
+            count = 6 if status not in ('off', 'miss') else 2 if status == 'miss' else 1
+            for n in range(count):
+                result = ('ok' if status == 'off' else status) if n == 0 or status == 'miss' else 'ok'
+                if aid in ('content-check', 'review-plan') and n in (1, 2, 3):
+                    result = 'fail' if aid == 'content-check' else 'stuck'
+                start = now - 60 * (8 + i * 11) - n * 86400
+                summary = M('schedule.exit', 1 if result == 'fail' else 0) if source == 'launchd' else {
+                    'ok': 'Checked my-app; all tests pass.',
+                    'fail': 'Unable to connect to example.com (ENOTFOUND).',
+                    'stuck': 'Keep the legacy endpoint for another 30 days?',
+                    'run': 'Checking theme tokens and running tests.'}.get(result, M('schedule.missed'))
+                if aid == 'content-check' and n == 1:
+                    summary = 'Failed to authenticate. API Error: 403'
+                elif aid == 'content-check' and n == 2:
+                    summary = 'Unexpected response: example fixture error'
+                run = {'id': str(n + 1), 'start': start, 'end': start + 74 if result not in ('run', 'miss') else None,
+                       'status': result, 'summary': summary, 'session_key': key if n == 0 else None,
+                       'items': [{'text': summary}] if result == 'stuck' else []}
+                if source == 'claude':
+                    run.update(mode='manual' if n == 3 else 'automatic', mode_inferred=n == 4)
+                if aid == 'review-plan' and n == 2:
+                    run.update(replied_at=start + 40, reply_continued=True, handled=True, handled_reason='replied')
+                runs.append(run)
+        task = {'id': aid, 'source': source, 'title': title, 'enabled': enabled,
+                'off_reason': M('schedule.once_done' if aid == 'once-complete' else 'schedule.paused'),
+                'kind': 'once' if aid in ('cutover-check', 'once-complete') else 'heartbeat' if source == 'codex' else 'cron',
+                'schedule': M('schedule.daily', '11:00'), 'raw': 'FREQ=DAILY;BYHOUR=11;BYMINUTE=0' if source == 'codex' else '0 11 * * *',
+                'description': '/bin/sh /Users/alice/my-app/check.sh' if source == 'launchd' else 'Check my-app and report failures.',
+                'config_path': '/Users/alice/Library/LaunchAgents/%s.plist' % aid if source == 'launchd' else
+                               '/Users/alice/.codex/automations/%s/automation.toml' % aid if source == 'codex' else
+                               '/Users/alice/Library/Application Support/Claude/claude-code-sessions/account/workspace/scheduled-tasks.json',
+                'runs': runs, 'next_run': now + 3600 + i * 900 if enabled else None, 'loaded': True}
+        if source == 'launchd':
+            task['log_paths'] = ['/Users/alice/Library/Logs/my-app.log']
+        if source == 'claude':
+            task['skill_path'] = '/Users/alice/.claude/scheduled-tasks/%s/SKILL.md' % aid
+        if task['kind'] == 'once':
+            fire = task['next_run'] or now - 86400
+            task['schedule'] = once_description(fire, now)
+            task['raw'] = 'fireAt ' + dt.datetime.fromtimestamp(fire).astimezone().isoformat(timespec='seconds')
+        tasks.append(finish_task(task))
+    service = finish_task({'id': 'com.example.preview', 'title': 'com.example.preview', 'source': 'launchd',
+                           'service': True, 'enabled': True, 'loaded': True, 'pid': 12345, 'uptime': 172800,
+                           'restarts_24h': 0, 'runs': [], 'next_run': None})
+    return {'ready': True, 'now': now, 'refresh_seconds': 45, 'tasks': tasks, 'services': [service]}
+
+
+def schedule_log(label, run_id):
+    if label not in ('com.example.backup', 'com.example.cleanup') or run_id not in {str(n) for n in range(1, 7)}:
+        return None
+    return {'lines': [{'stream': 'stdout', 'text': 'Starting my-app check'},
+                      {'stream': 'stderr' if label.endswith('backup') else 'stdout',
+                       'text': 'Request to example.com timed out; exit 1' if label.endswith('backup') else 'Done; exit 0'}],
+            'unavailable': False}
+
+
+def schedule_diagnosis(source, task_id, run_id):
+    return {'asleep': False, 'desktop_running': True if source == 'claude' else None,
+            'launchd_loaded': True if source == 'launchd' else None,
+            'dispatched': False, 'delayed': False, 'modified': None, 'disabled': None}

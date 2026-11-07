@@ -36,6 +36,7 @@ import webbrowser
 from . import autostart
 from . import collect as C
 from . import demo
+from . import schedules
 from .collect import M
 from .config import parse_args
 from .summarize import (AUTO_ORDER, CLAUDE_MODELS, MODEL_RE, Summarizer, conversation_lang, installed, make_backend,
@@ -46,6 +47,8 @@ STATIC_FILES = {  # URL path -> (file in STATIC_DIR, content type)
     '/': ('index.html', 'text/html; charset=utf-8'),
     '/index.html': ('index.html', 'text/html; charset=utf-8'),
     '/i18n.js': ('i18n.js', 'application/javascript; charset=utf-8'),
+    '/schedules.js': ('schedules.js', 'application/javascript; charset=utf-8'),
+    '/schedules.css': ('schedules.css', 'text/css; charset=utf-8'),
     '/favicon.svg': ('favicon.svg', 'image/svg+xml'),
     '/favicon.ico': ('favicon.ico', 'image/x-icon'),
     '/apple-touch-icon.png': ('apple-touch-icon.png', 'image/png'),
@@ -60,7 +63,8 @@ def fmt_local(ts):
     return dt.datetime.fromtimestamp(t).strftime('%m-%d %H:%M') if t else ''
 
 
-STATE_FILES = ('token', 'settings.json', 'summaries.json', 'dismissed.json', 'consent.json', 'monitor.log')
+STATE_FILES = ('token', 'settings.json', 'summaries.json', 'dismissed.json', 'consent.json', 'monitor.log',
+               'schedules-launchd.json')
 
 
 def secure_dir(path):
@@ -171,6 +175,10 @@ class Monitor:
         self.last_error = None
         self.pruned_at = 0
         self.unreadable = set()       # (log, errno) already reported, so the log does not repeat it every scan
+        self.schedule_snapshot = {'ready': False, 'tasks': [], 'services': []}
+        self.schedule_stop = threading.Event()
+        self.schedule_collector = None if cfg.demo else schedules.ScheduleCollector(
+            cfg.state_dir, cfg.codex_dir, C.CCD_DIR if cfg.desktop else None)
         C.set_tail_func(self.tail)
 
     # ---- Reading ----
@@ -200,6 +208,96 @@ class Monitor:
                     traceback.print_exc()
                 self.snapshot = dict(self.snapshot, error=M('error.scan', repr(e)))
             time.sleep(max(1.0, SCAN_INTERVAL - (time.time() - t0)))
+
+    def scan_schedules(self):
+        if self.cfg.demo:
+            self.schedule_snapshot = demo.schedules(time.time())
+            self.update_schedule_state()
+            return
+        with self.lock:
+            rows = list(self.snapshot.get('rows', []))
+            paths = {key[6:]: path for key, path in self.paths.items() if key.startswith('codex:')}
+        snapshot = self.schedule_collector.collect(rows, paths)
+        with self.lock:
+            self.schedule_snapshot = snapshot
+            self.update_schedule_state()
+
+    @staticmethod
+    def schedule_key(task, run):
+        return 'schedule:' + json.dumps([task['source'], task['id'], run['id']], separators=(',', ':'))
+
+    def update_schedule_state(self):
+        """Overlay display-only state using the same message boundary as the session list."""
+        with self.lock:
+            rows = {r['key']: r for r in self.snapshot.get('rows', [])}
+            for task in self.schedule_snapshot.get('tasks', []):
+                for run in task.get('runs', []):
+                    key, sid = self.schedule_key(task, run), run.get('session_key')
+                    row = rows.get(sid) or {}
+                    msg = row.get('msg_ts') or run.get('msg_ts') or run.get('end') or 0
+                    entry = self.dismissed.get(key) or {}
+                    current = bool(entry) and msg <= (entry.get('msg_ts') or 0) + 0.5
+                    dismissed = bool(sid and self.dismiss_state(sid, msg)[0])
+                    replied = row.get('scheduled_reply_ts') or run.get('replied_at')
+                    continued = row.get('scheduled_reply_continued', run.get('reply_continued', False))
+                    automatic = bool(replied and continued)
+                    boundaries = [v.get('msg_ts') or 0 for v in (entry, self.dismissed.get(sid) or {}) if v]
+                    boundary = max(boundaries, default=None)
+                    if boundary is not None and msg > boundary + 0.5 and (replied or 0) <= boundary + 0.5:
+                        automatic = False
+                    handled = run['status'] in ('fail', 'stuck', 'miss') and bool(
+                        dismissed or (current and not entry.get('restored')) or
+                        automatic and not (current and entry.get('restored')))
+                    run.update(handled=handled,
+                               handled_reason=('dismissed' if dismissed else
+                                               'marked' if current and not entry.get('restored') else
+                                               'replied') if handled else None,
+                               dismiss_key=key)
+                    if row:
+                        run['items'] = row.get('items', [])[:3]
+                        run['msg_ts'] = msg
+                task['group'] = schedules.classify(task)
+            return self.schedule_snapshot
+
+    def schedule_diagnosis(self, source, task_id, run_id):
+        task = next((t for t in self.schedule_snapshot.get('tasks', [])
+                     if t['source'] == source and t['id'] == task_id), None)
+        run = next((r for r in task.get('runs', []) if r['id'] == run_id), None) if task else None
+        if not run or run['status'] != 'miss':
+            return None
+        if self.cfg.demo:
+            return demo.schedule_diagnosis(source, task_id, run_id)
+        return self.schedule_collector.diagnostics.get(task, run)
+
+    def schedule_previous(self, source, task_id):
+        with self.lock:
+            task = next((t for t in self.schedule_snapshot.get('tasks', [])
+                         if t['source'] == source and t['id'] == task_id), None)
+            if not task:
+                return None
+            self.update_schedule_state()
+            keys = [self.schedule_key(task, run) for run in task.get('runs', [])[1:]
+                    if run['status'] in ('fail', 'stuck', 'miss') and not run.get('handled')]
+            self.set_dismissed(keys, True)
+            return keys
+
+    def schedules_loop(self):
+        while not self.snapshot.get('ready'):
+            if self.schedule_stop.wait(0.1):
+                return
+        while not self.schedule_stop.is_set():
+            try:
+                self.scan_schedules()
+            except Exception as e:
+                self.schedule_snapshot = dict(self.schedule_snapshot, error=M('schedule.scan_error', repr(e)))
+                traceback.print_exc()
+            if self.schedule_stop.wait(schedules.REFRESH_SECONDS):
+                return
+
+    def schedule_log(self, label, run_id):
+        if self.cfg.demo:
+            return demo.schedule_log(label, run_id)
+        return self.schedule_collector.history.log(label, run_id)
 
     def scan(self):
         now = time.time()
@@ -266,11 +364,17 @@ class Monitor:
                          'scan_ms': int((time.time() - now) * 1000), 'days': self.cfg.days, 'lang': self.lang,
                          'lang_locked': self.cfg.lock_lang, 'sources': self.sources(len(cfiles), len(threads)),
                          'summary': self.summary_info()}
+        self.update_schedule_state()
         self.housekeep(now, xfiles, rows)
 
     def housekeep(self, now, codex_files, rows):
         """Keep memory and the state folder from growing while it runs for weeks."""
         keys = {r['key'] for r in rows}
+        for task in self.schedule_snapshot.get('tasks', []):
+            for run in task.get('runs', []):
+                keys.add(self.schedule_key(task, run))
+                if run.get('session_key'):
+                    keys.add(run['session_key'])
         with self.lock:
             for p in [p for p, t in self.tails.items() if now - getattr(t, 'used', 0) > EVICT_SECONDS]:
                 del self.tails[p]        # read again from the start if it is needed later
@@ -546,6 +650,10 @@ class Monitor:
             else:
                 row['status'] = 'ok'
         row['dismissed'], row['reappeared'] = self.dismiss_state(key, msg_ts)
+        row['scheduled_run_end'] = C.parse_ts(sess.scheduled_run_end)
+        row['scheduled_reply_ts'] = C.parse_ts(sess.scheduled_reply_ts)
+        row['scheduled_reply_continued'] = ((C.parse_ts(sess.last_asst_ts) or 0) >
+                                          (C.parse_ts(sess.scheduled_reply_ts) or float('inf')))
         return row
 
     @staticmethod
@@ -625,6 +733,14 @@ class Monitor:
     def detail(self, key):
         row = next((r for r in self.snapshot.get('rows', []) if r['key'] == key), None)
         path = self.paths.get(key)
+        if not row and self.schedule_collector is not None:
+            archived = self.schedule_collector.session_paths.get(key)
+            if archived:
+                with self.lock:
+                    self.tail(archived, C.ClaudeSession if key.startswith('claude:') else C.CodexThread)
+                    row = (self.claude_row(archived, C.live_claude_sessions(), time.time()) if key.startswith('claude:')
+                           else self.codex_row(archived, C.codex_thread_names(), time.time()))
+                    path = archived
         if not row or not path:
             return None
         now = time.time()
@@ -699,20 +815,41 @@ class Monitor:
     def set_dismissed(self, keys, on):
         rows = {r['key']: r for r in self.snapshot.get('rows', [])}
         with self.lock:
+            runs = {self.schedule_key(task, run): run for task in self.schedule_snapshot.get('tasks', [])
+                    for run in task.get('runs', [])}
             for k in keys:
-                if on and k in rows:
-                    self.dismissed[k] = {'at': time.time(), 'msg_ts': rows[k]['msg_ts']}
-                    rows[k]['dismissed'], rows[k]['reappeared'] = True, False
+                run = runs.get(k)
+                sid = run.get('session_key') if run else k
+                row = rows.get(sid)
+                if on and (row or run):
+                    msg = (row or {}).get('msg_ts') or (run or {}).get('msg_ts') or (run or {}).get('end') or 0
+                    value = {'at': time.time(), 'msg_ts': msg}
+                    self.dismissed[k] = dict(value, session_key=sid) if run else value
+                    if sid:
+                        self.dismissed[sid] = value
+                    if row:
+                        row['dismissed'], row['reappeared'] = True, False
                 elif not on:
                     self.dismissed.pop(k, None)
-                    if k in rows:
-                        rows[k]['dismissed'] = rows[k]['reappeared'] = False
+                    if sid:
+                        self.dismissed.pop(sid, None)
+                    for rk, linked in runs.items():
+                        if rk == k or sid and linked.get('session_key') == sid:
+                            self.dismissed.pop(rk, None)
+                            if linked.get('replied_at') or (row or {}).get('scheduled_reply_ts'):
+                                self.dismissed[rk] = {'at': time.time(), 'restored': True,
+                                                      'msg_ts': (row or {}).get('msg_ts') or linked.get('msg_ts') or 0}
+                    if row:
+                        row['dismissed'] = row['reappeared'] = False
             self.save_dismissed()
+            self.update_schedule_state()
 
     def save_dismissed(self):
         tmp = self.dismiss_path + '.tmp'
-        with open(tmp, 'w', encoding='utf-8') as f:
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, 'O_NOFOLLOW', 0), 0o600)
+        with os.fdopen(fd, 'w', encoding='utf-8') as f:
             json.dump(self.dismissed, f, ensure_ascii=False)
+        os.chmod(tmp, 0o600)
         os.replace(tmp, self.dismiss_path)
 
 
@@ -790,6 +927,17 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self._need_token()
             if u.path == '/api/sessions':
                 return self._send(200, self.mon.snapshot)
+            if u.path == '/api/schedules':
+                self.mon.update_schedule_state()
+                return self._send(200, self.mon.schedule_snapshot)
+            match = re.fullmatch(r'/api/schedules/(claude|codex|launchd)/([^/]+)/runs/([^/]+)/diagnosis', u.path)
+            if match:
+                data = self.mon.schedule_diagnosis(*(urllib.parse.unquote(v) for v in match.groups()))
+                return self._send(200, data) if data is not None else self._send(404, {'error': M('schedule.run_missing')})
+            match = re.fullmatch(r'/api/schedules/launchd/([^/]+)/runs/([^/]+)/log', u.path)
+            if match:
+                data = self.mon.schedule_log(*(urllib.parse.unquote(v) for v in match.groups()))
+                return self._send(200, data) if data is not None else self._send(404, {'error': M('schedule.run_missing')})
             if u.path == '/api/session':
                 d = self.mon.detail(q.get('key') or '')
                 return self._send(200, d) if d else self._send(404, {'error': M('error.session_missing')})
@@ -824,7 +972,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
                     return self._send(400, {'error': M('error.summary_settings')})
                 return self._send(200, {'ok': True, 'summary': self.mon.summary_info()})
             keys = [k for k in body.get('keys') or [] if isinstance(k, str)]
-            if self.path == '/api/dismiss':
+            if self.path == '/api/schedules/previous':
+                keys = self.mon.schedule_previous(body.get('source'), body.get('id'))
+                if keys is None:
+                    return self._send(404, {'error': M('schedule.task_missing')})
+            elif self.path == '/api/dismiss':
                 self.mon.set_dismissed(keys, True)
             elif self.path == '/api/open':
                 # Fall back to the server opener if an embedded browser blocks the page's desktop link.
@@ -979,6 +1131,8 @@ def main(argv=None):
     except ValueError as e:
         sys.exit('claude-codex-monitor: %s' % e)
     threading.Thread(target=mon.loop, daemon=True).start()
+    schedule_thread = threading.Thread(target=mon.schedules_loop, daemon=True)
+    schedule_thread.start()
     srv.mon = mon
     srv.token = load_token(cfg.state_dir) if cfg.token else None
     srv.token_file = os.path.join(cfg.state_dir, 'token')
@@ -993,6 +1147,10 @@ def main(argv=None):
         srv.serve_forever()
     except KeyboardInterrupt:
         pass
+    finally:
+        mon.schedule_stop.set()
+        schedule_thread.join(timeout=5)
+        srv.server_close()
 
 
 if __name__ == '__main__':

@@ -7,6 +7,7 @@
 <link rel="icon" href="/favicon.ico" sizes="32x32">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="stylesheet" href="/schedules.css">
 <style>
 /* Two colour sets: light by default, dark when the page sets data-theme="dark" (follows the system unless chosen) */
 :root{
@@ -285,6 +286,7 @@ a{color:var(--run)}
 <div class="toast" id="toast" hidden><span id="toastTx"></span><button id="undo" hidden data-i18n="common.undo"></button></div>
 
 <script src="/i18n.js"></script>
+<script src="/schedules.js"></script>
 <script>
 const POLL = 3000;
 const ST = [
@@ -417,6 +419,8 @@ let taskFilter = 'all', showFiles = false, prevRowSt = null, toastTimer = null, 
 
 function route() {
   const h = location.hash || '#/';
+  const schedule = Schedules.route(h);
+  if (schedule) return schedule;
   if (h.startsWith('#/s/')) return {name: 'detail', key: decodeURIComponent(h.slice(4))};
   return {name: 'list'};
 }
@@ -457,6 +461,7 @@ async function tick(force) {
   const rt = route();
   try {
     snap = await getJson('/api/sessions');
+    await Schedules.refresh(force);
     if (snap.lang_locked || !validLang(preferredLang)) lang = validLang(snap.lang) ? snap.lang : browserLang;
     document.documentElement.lang = lang;
     if (rt.name === 'detail' && snap.ready) {      // Wait for the first scan before fetching session details.
@@ -507,6 +512,11 @@ function render() {
     $('view').innerHTML = `<div class="top">${brand()}<span class="sp"></span>${settingsHtml()}</div>` + tokenHtml();
     return;
   }
+  if (rt.name === 'schedules') {
+    $('view').innerHTML = topBar() + Schedules.render(rt);
+    Schedules.afterRender(rt);
+    return;
+  }
   if (!snap || !snap.ready) {
     const p = (snap && snap.progress) || {};
     $('view').innerHTML = `<div class="top">${brand()}<span class="sp"></span>${settingsHtml()}</div><div class="loading">${t('loading.recent', (snap && snap.days) || 7)}${p.total ? ` (${p.done}/${p.total})` : ''}</div>`;
@@ -519,10 +529,11 @@ function render() {
 }
 
 function topBar() {
-  const vis = snap.rows.filter(r => !isDismissed(r) && inRange(r));
+  const vis = ((snap && snap.rows) || []).filter(r => !isDismissed(r) && inRange(r));
   const cc = vis.filter(r => r.client === 'claude').length, xc = vis.length - cc;
   const dayName = span() === 0 ? t('time.today') : t('header.last_days', span() + 1);
-  return `<div class="top">${brand()}<span class="meta">${t('header.clients', dayName, cc, xc)}</span><span class="sp"></span>${settingsHtml()}</div>`;
+  const scheduling = route().name === 'schedules';
+  return `<div class="top">${brand()}${Schedules.nav(scheduling)}<span class="meta">${scheduling ? t('schedule.refresh', 45) : t('header.clients', dayName, cc, xc)}</span><span class="sp"></span>${settingsHtml()}</div>`;
 }
 function toolBar() {
   return `<div class="tools"><label class="search">${ICON.search}<input id="search" placeholder="${t('search.placeholder')}" aria-label="${t('search.label')}" value="${esc(query)}"><kbd>/</kbd></label><span class="sp"></span>
@@ -548,7 +559,7 @@ function noSessionsHtml() {
 function renderList() {
   const now = snap.now;
   if (!snap.rows.length) {
-    $('view').innerHTML = `<div class="top">${brand()}<span class="sp"></span>${settingsHtml()}</div>` + noSessionsHtml();
+    $('view').innerHTML = topBar() + noSessionsHtml();
     return;
   }
   const base = snap.rows.filter(r => !isDismissed(r) && inRange(r));
@@ -909,6 +920,8 @@ async function dismiss(keys, label) {
   render();
   try { await post('/api/dismiss', keys); } catch (e) { toast(() => t('toast.dismiss_failed', tm(e.userMessage || e.message))); return; }
   patchRows(keys, true);
+  await Schedules.refresh(true);
+  render();
   toast(() => t('toast.dismissed', typeof label === 'function' ? label() : label), () => restore(keys, true));
 }
 async function restore(keys, silent) {
@@ -916,6 +929,7 @@ async function restore(keys, silent) {
   render();
   try { await post('/api/restore', keys); } catch (e) { toast(() => t('toast.restore_failed', tm(e.userMessage || e.message))); return; }
   patchRows(keys, false);
+  await Schedules.refresh(true);
   render();
   if (!silent) toast(() => t('toast.restored'));
   else $('toast').hidden = true;
@@ -927,6 +941,7 @@ function copyText(text) {
 }
 
 document.addEventListener('click', e => {
+  if (Schedules.click(e)) return;
   const el = e.target;
   const ddb = el.closest('[data-dd]');
   if (ddb) {
@@ -999,6 +1014,8 @@ document.addEventListener('click', e => {
   if (row && route().name === 'list') { location.hash = '#/s/' + encodeURIComponent(row.dataset.key); }
 });
 document.addEventListener('keydown', e => {
+  const scheduleRow = e.target.closest('[data-schedule]');
+  if (e.key === 'Enter' && scheduleRow) { location.hash = scheduleRow.dataset.schedule; return; }
   if (e.key === 'Enter' && e.target.classList && e.target.classList.contains('row')) location.hash = '#/s/' + encodeURIComponent(e.target.dataset.key);
   if (e.key === 'Escape') {
     if (document.querySelector('.dd.open')) { closeMenus(); return; }
