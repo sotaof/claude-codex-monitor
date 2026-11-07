@@ -379,7 +379,13 @@ FILE_TOOLS = ('Write', 'Edit', 'MultiEdit', 'NotebookEdit')
 
 
 class ClaudeSession:
-    def __init__(self):
+    def __init__(self, own_id=None):
+        # A session forked in the desktop app (side chat, fork, hand-off) starts with a copy of the parent's log, each
+        # copied line still carrying the parent's sessionId. With own_id (the log's file name) those lines are skipped:
+        # they belong to the parent, and the fork is judged by what happened in it alone.
+        self.own_id = own_id
+        self.forked_from = None                       # Parent Claude session ID, when the log starts with a copy.
+        self.own_msgs = 0                             # User and assistant lines written by this session itself.
         self.sid = self.title = self.root = self.cwd = None
         self.first_ts = self.last_ts = None
         self.entrypoint = self.branch = self.model = None
@@ -421,6 +427,10 @@ class ClaudeSession:
         return True
 
     def feed(self, d, raw):
+        other = d.get('sessionId')
+        if self.own_id and other and other != self.own_id:
+            self.forked_from = self.forked_from or other
+            return
         ts = d.get('timestamp')
         if ts:
             self.first_ts = self.first_ts or ts
@@ -452,6 +462,7 @@ class ClaudeSession:
             return
         if d.get('isSidechain') or t not in ('assistant', 'user'):
             return
+        self.own_msgs += 1
         msg = d.get('message') or {}
         content = msg.get('content')
         if t == 'user' and isinstance(content, str) and content.lstrip().startswith('<scheduled-task '):
@@ -1029,8 +1040,10 @@ def ccd_cards(since):
     - Desktop IDs: Claude session ID -> local_xxx filename, for claude://claude.ai/epitaxy/local_xxx links.
     - Sessions started from a card: proposal task_id -> local_xxx of the new session (its spawnedFrom). When you
       click Start on the card yourself, the proposing session's log has no start result; this is the only link.
+    - Side chats: Claude session ID of a session opened as a side chat (spawnedFrom.btw) -> local_xxx of the session
+      it came from. Kept by desktop session, so it still holds after the side chat moves on to a new log.
     Each file is about 600 KB; decode only the sections needed and reread only modified files."""
-    out, local_ids, spawned, now_ms, dec = {}, {}, {}, time.time() * 1000, json.JSONDecoder()
+    out, local_ids, spawned, side, now_ms, dec = {}, {}, {}, {}, time.time() * 1000, json.JSONDecoder()
     seen = set()
     for p in glob.glob(os.path.join(CCD_DIR, '*', '*', 'local_*.json')):
         try:
@@ -1059,17 +1072,20 @@ def ccd_cards(since):
                     return None
             cards, sp = section(CARDS_KEY), section(SPAWN_KEY)
             c = _ccd_cache[p] = (mt, m.group(1).decode() if m else None, cards if isinstance(cards, list) else [],
-                                 sp.get('taskId') if isinstance(sp, dict) else None)
+                                 sp.get('taskId') if isinstance(sp, dict) else None,
+                                 sp.get('sessionId') or '' if isinstance(sp, dict) and sp.get('btw') else None)
         if c[1]:
             local_ids[c[1]] = os.path.basename(p)[:-5]
         if c[3]:
             spawned[c[3]] = os.path.basename(p)[:-5]
+        if c[1] and c[4] is not None:
+            side[c[1]] = c[4]
         live = [x for x in c[2] if isinstance(x, dict) and x.get('title') and float(x.get('expiresAt') or 0) > now_ms]
         if c[1] and live:
             out[c[1]] = live
     for p in [p for p in _ccd_cache if p not in seen]:      # out of range or deleted
         del _ccd_cache[p]
-    return out, local_ids, spawned
+    return out, local_ids, spawned, side
 
 
 # ---------- Session processes and Codex titles ----------

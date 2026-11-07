@@ -384,6 +384,49 @@ class Hardening(unittest.TestCase):
             row = self.scan(waiting)['Migrate CI to GitHub Actions']
             self.assertEqual((row['status'], row['items'][0]['text']['m']), ('wait', text), what)
 
+    def fork(self, cd, name, own_lines):
+        """A desktop side chat: the parent's log copied line for line (parent sessionId kept), then its own lines."""
+        parent = glob.glob(os.path.join(cd, 'projects', '*', demo._id('claude:' + name) + '.jsonl'))[0]
+        fid = '0000feed-0000-4000-8000-000000000000'
+        with open(parent) as f:
+            copied = f.read()
+        lines = [{'type': 'custom-title', 'customTitle': 'Side chat', 'sessionId': fid}]
+        lines += [dict(d, sessionId=fid) for d in own_lines]
+        with open(os.path.join(os.path.dirname(parent), fid + '.jsonl'), 'w') as f:
+            f.write(copied.rstrip('\n') + '\n' + ''.join(json.dumps(d) + '\n' for d in lines))
+
+    def test_side_chat_with_nothing_said_is_hidden(self):
+        rows = self.scan(lambda cd, xd: self.fork(cd, 'webhooks', []))
+        self.assertNotIn('Side chat', rows)
+        self.assertEqual(rows['Refactor billing webhooks']['status'], 'wait')    # the parent is untouched
+
+    def test_side_chat_shows_only_its_own_part(self):
+        ts = time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime(time.time() - 600))
+        own = [{'type': 'user', 'timestamp': ts, 'cwd': '/tmp', 'message': {'role': 'user', 'content': 'where is this from?'}},
+               {'type': 'assistant', 'timestamp': ts, 'message': {'role': 'assistant', 'id': 'm1', 'stop_reason': 'end_turn',
+                                                                  'content': [{'type': 'text', 'text': 'From the config.'}]}}]
+        rows = self.scan(lambda cd, xd: self.fork(cd, 'webhooks', own))
+        row = rows['Side chat']
+        self.assertEqual(row['fork_of']['key'], 'claude:' + demo._id('claude:webhooks'))
+        self.assertEqual(row['fork_of']['title'], 'Refactor billing webhooks')
+        self.assertIsNone(row['progress'])       # the parent's subtasks stay with the parent
+        self.assertEqual(row['start_ts'], C.parse_ts(ts))
+        self.assertIsNone(rows['Refactor billing webhooks']['fork_of'])
+
+    def test_subagent_lines_are_read_whatever_their_session_id(self):
+        sub = C.ClaudeSubagent()
+        sub.feed({'type': 'assistant', 'sessionId': 'parent', 'timestamp': '2026-01-01T00:00:00.000Z',
+                  'message': {'content': [{'type': 'text', 'text': 'working'}]}}, b'')
+        self.assertEqual(sub.last_ts, '2026-01-01T00:00:00.000Z')
+
+    def test_side_chat_on_a_new_log_still_names_its_parent(self):
+        # After compacting, a side chat writes a new log with no copied lines; the desktop record still names the parent.
+        mon = mock.Mock(side={'new-log': 'local_parent', 'other': ''}, local_to_cli={'local_parent': 'parent-id'})
+        plain = C.ClaudeSession(own_id='new-log')
+        self.assertEqual(S.Monitor.fork_of(mon, 'new-log', plain), {'key': 'claude:parent-id', 'title': None, 'side': True})
+        self.assertEqual(S.Monitor.fork_of(mon, 'other', plain), {'key': None, 'title': None, 'side': True})
+        self.assertIsNone(S.Monitor.fork_of(mon, 'plain', plain))
+
     def test_resumed_codex_session_in_an_old_folder(self):
         def resume(cd, xd):          # Codex keeps writing a resumed session into the folder of the day it started
             f = glob.glob(os.path.join(xd, 'sessions', '*', '*', '*', '*%s.jsonl' % demo._id('codex:dark')))[0]

@@ -61,6 +61,7 @@ a{color:var(--run)}
 .chip{font-size:12px;color:var(--muted);background:var(--line2);border-radius:5px;padding:0 6px;white-space:nowrap}
 .chip.run{background:var(--run-bg);color:var(--run)}.chip.fail{background:var(--fail-bg);color:var(--fail)}
 .chip.tip{background:var(--tip-bg);color:var(--tip)}.chip.back{background:var(--back-bg);color:var(--back)}.chip.sum{background:transparent;color:var(--faint);padding:0}
+.chip.fork{max-width:320px;overflow:hidden;text-overflow:ellipsis}
 .sg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--surface)}
 .sg button{border:0;background:transparent;padding:5px 11px;font-size:13px;color:var(--muted);border-right:1px solid var(--line);min-height:30px}
 .sg button:last-child{border-right:0}
@@ -716,6 +717,11 @@ function rowHtml(r, now) {
   if (p && p.run && r.status !== 'run') chips += `<span class="chip run">${t('tasks.running', p.run)}</span>`;
   if (p && p.fail) chips += `<span class="chip fail">${t('tasks.failed', p.fail)}</span>`;
   if (r.optional && r.optional.length && r.status !== 'wait') chips += `<span class="chip tip" title="${esc(r.optional.map((o, i) => `${i + 1}. ${tm(o)}`).join('\n'))}">${t('tasks.optional', r.optional.length)}</span>`;
+  const fk = r.fork_of;
+  if (fk) {
+    const kind = fk.side ? 'list.side_chat' : 'list.fork';
+    chips += `<span class="chip fork" title="${esc(fk.title || '')}">${esc(fk.title ? t(kind + '_of', fk.title) : t(kind))}</span>`;
+  }
   if (r.reappeared) chips += `<span class="chip back">${t('list.reappeared')}</span>`;
   if (r.status === 'wait' && r.running) chips += `<span class="chip run">${t('list.still_running')}</span>`;
   let body = `<div class="t1"><span class="tt">${esc(r.title)}</span>${chips}</div>`;

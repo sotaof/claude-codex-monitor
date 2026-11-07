@@ -12,6 +12,7 @@ import dataclasses
 import datetime as dt
 import errno
 import faulthandler
+import functools
 import glob
 import hmac
 import http.server
@@ -189,6 +190,7 @@ class Monitor:
         self.cards = {}               # Claude session ID -> pending desktop new-session cards.
         self.local_ids = {}           # Claude session ID -> desktop local_xxx ID for open links.
         self.spawned = {}             # Proposed new session task_id -> local_xxx of the session started from it.
+        self.side = {}                # Claude session ID of a side chat -> local_xxx of the session it came from.
         self.local_to_cli = {}        # local_xxx -> Claude session ID, to find new sessions started from a session.
         self.prev_rows = {}           # Previous scan's rows by key; new-session subtasks take their status from it.
         self.last_error = None
@@ -218,6 +220,29 @@ class Monitor:
             print('%sready after %.1fs (%s: %d)' % (
                 'schedules ' if scheduled else '', time.monotonic() - self.started_at,
                 kind, len(snapshot['tasks' if scheduled else 'rows'])), flush=True)
+
+    @staticmethod
+    def claude_factory(path):
+        """Main Claude logs know their own session ID, so lines a fork copied from its parent can be told apart."""
+        return functools.partial(C.ClaudeSession, own_id=os.path.basename(path)[:-6])
+
+    def fork_of(self, sid, sess):
+        """Where a forked session came from: its copied lines say so, and so does the desktop record of a side chat,
+        which still names the parent after the side chat has moved on to a new log without copied lines."""
+        side = sid in self.side
+        parent = sess.forked_from or self.local_to_cli.get(self.side.get(sid))
+        if not parent and not side:
+            return None
+        return {'key': 'claude:' + parent if parent else None, 'title': None, 'side': side}
+
+    def name_forks(self, rows):
+        """Give each forked session's row the title of the session it came from."""
+        titles = {r['key']: r['title'] for r in rows}
+        for r in rows:
+            f = r.get('fork_of')
+            if f and f['key']:
+                st = self.state_of(os.path.join(os.path.dirname(self.paths.get(r['key'], '')), f['key'][7:] + '.jsonl'))
+                f['title'] = titles.get(f['key']) or (st.title if st else None)
 
     def tail(self, path, factory):
         with self.lock:
@@ -377,14 +402,15 @@ class Monitor:
             self.snapshot = dict(self.snapshot, progress=prog)
         for f in todo:
             try:
-                self.tail(f, C.ClaudeSession if f.startswith(C.CLAUDE_PROJECTS) else C.CodexThread)
+                self.tail(f, self.claude_factory(f) if f.startswith(C.CLAUDE_PROJECTS) else C.CodexThread)
             except OSError as e:        # skip a log that cannot be read right now; try again next scan
                 if (f, e.errno) not in self.unreadable:
                     self.unreadable.add((f, e.errno))
                     print('claude-codex-monitor: could not read %s: %r' % (f, e), file=sys.stderr, flush=True)
             prog['done'] += 1
         names = C.codex_thread_names()
-        self.cards, self.local_ids, self.spawned = C.ccd_cards(cutoff) if self.cfg.desktop else ({}, {}, {})
+        self.cards, self.local_ids, self.spawned, self.side = (C.ccd_cards(cutoff) if self.cfg.desktop
+                                                               else ({}, {}, {}, {}))
         self.local_to_cli = {v: k for k, v in self.local_ids.items()}
         self.prev_rows = {r['key']: r for r in self.snapshot.get('rows', [])}
         rows = []
@@ -398,6 +424,7 @@ class Monitor:
                 r = self.codex_row(f, names, now)
                 if r:
                     rows.append(r)
+        self.name_forks(rows)
         rows.sort(key=lambda r: r['last_ts'] or 0, reverse=True)
         self.snapshot = {'ready': True, 'now': now, 'rows': rows, 'progress': prog,
                          'scan_ms': int((time.time() - now) * 1000), 'days': self.cfg.days, 'lang': self.lang,
@@ -688,6 +715,8 @@ class Monitor:
         key = 'claude:' + sid
         if key in self.cli_children:        # Sessions launched by claude -p belong under their parent.
             return None
+        if sess.forked_from and not sess.own_msgs:
+            return None                     # A side chat or fork nobody has written in yet is only a copy of its parent.
         self.paths[key] = path
         sdir = path[:-6]
         links = self.links_for(path, sess, now)
@@ -705,7 +734,8 @@ class Monitor:
                'project': C.project_of(sess.root), 'cwd': sess.root, 'last_ts': last, 'start_ts': C.parse_ts(sess.first_ts),
                'msg_ts': msg_ts, 'progress': prog, 'items': [], 'optional': [], 'summarized': True, 'summarizing': False,
                'line': C.plain_line(sess.last_text), 'note': None, 'wait_since': None,
-               'running_title': running[0]['title'] if running else None}
+               'running_title': running[0]['title'] if running else None,
+               'fork_of': self.fork_of(sid, sess)}
         busy = lv.get('status') in ('busy', 'shell')
         ended = sess.turn_ended()
         cards = [{'text': M('ask.new_session', c['title']), 'src': 'ask',
