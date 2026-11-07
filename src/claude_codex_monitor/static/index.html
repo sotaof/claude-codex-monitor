@@ -185,6 +185,7 @@ a{color:var(--run)}
 .c-wait{background:var(--wait-bg);border-color:var(--wait-line)}.c-wait h3{color:var(--wait)}
 .c-run{background:var(--run-bg);border-color:var(--run-line)}.c-run h3{color:var(--run)}
 .c-fail{background:var(--fail-bg);border-color:var(--fail-line)}.c-fail h3{color:var(--fail)}
+.c-tip{background:var(--tip-bg);border-color:transparent}.c-tip h3{color:var(--tip)}
 .info{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:0}
 .info>div{padding:9px 14px;border-right:1px solid var(--line2);border-bottom:1px solid var(--line2);min-width:0}
 .info>div:nth-child(4n){border-right:0}
@@ -657,7 +658,7 @@ function rowHtml(r, now) {
   let chips = `<span class="chip">${esc(r.project || '—')}</span>`;
   if (p && p.run && r.status !== 'run') chips += `<span class="chip run">${t('tasks.running', p.run)}</span>`;
   if (p && p.fail) chips += `<span class="chip fail">${t('tasks.failed', p.fail)}</span>`;
-  if (r.optional && r.optional.length && r.status !== 'wait') chips += `<span class="chip tip">${t('tasks.optional', r.optional.length)}</span>`;
+  if (r.optional && r.optional.length && r.status !== 'wait') chips += `<span class="chip tip" title="${esc(r.optional.map((o, i) => `${i + 1}. ${tm(o)}`).join('\n'))}">${t('tasks.optional', r.optional.length)}</span>`;
   if (r.reappeared) chips += `<span class="chip back">${t('list.reappeared')}</span>`;
   if (r.status === 'wait' && r.running) chips += `<span class="chip run">${t('list.still_running')}</span>`;
   let body = `<div class="t1"><span class="tt">${esc(r.title)}</span>${chips}</div>`;
@@ -717,6 +718,10 @@ function renderDetail() {
     sec += `<div class="sec"><div class="card c-run"><h3>${t('detail.working')}</h3><div>${esc(tm(r.note))}</div></div></div>`;
   } else if (r.status === 'fail') {
     sec += `<div class="sec"><div class="card c-fail"><h3>${t('status.fail')}</h3><div>${esc(tm(r.note))}</div></div></div>`;
+  }
+  if (r.status !== 'wait' && r.optional && r.optional.length) {
+    sec += `<div class="sec"><div class="card c-tip"><h3>${t('detail.optional', r.optional.length)}</h3>
+      <ol>${r.optional.map(o => `<li>${esc(tm(o))}</li>`).join('')}</ol></div></div>`;
   }
   const u = info.usage || {};
   const usage = r.client === 'claude' ? t('detail.claude_usage', num(u.output), num(u.cache_read)) : t('detail.codex_usage', num(u.total), num(u.output));
