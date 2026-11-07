@@ -32,6 +32,11 @@ jobs:
         run: python -m unittest discover -s tests -v
         env:
           PYTHONPATH: src
+      - name: Private words stay out (the word list is a repository secret; skipped without it)
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.12'
+        run: python scripts/leak_guard.py
+        env:
+          CCM_LEAK_WORDS: ${{ secrets.CCM_LEAK_WORDS }}
       - name: Starts from a download, and installs as a command
         run: |
           python run.py --help

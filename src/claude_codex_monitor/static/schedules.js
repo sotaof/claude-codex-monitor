@@ -43,10 +43,13 @@ window.Schedules = (() => {
         run: new URLSearchParams(match[3] || '').get('run')};
     } catch (e) { return {name: 'schedules'}; }
   }
-  function nav(active) {
+  function navLink(active) {
     const n = data ? data.tasks.filter(task => task.group === 'fail').length : 0;
+    return `<a href="#/schedules" class="${active ? 'on' : ''}"${active ? ' aria-current="page"' : ''}>${t('schedule.title')}${n ? `<span class="badge" title="${t('schedule.badge')}">${n}</span>` : ''}</a>`;
+  }
+  function nav(active) {
     return `<nav class="nav" aria-label="${t('schedule.navigation')}"><a href="#/" class="${active ? '' : 'on'}"${active ? '' : ' aria-current="page"'}>${t('schedule.sessions')}</a>
-      <a href="#/schedules" class="${active ? 'on' : ''}"${active ? ' aria-current="page"' : ''}>${t('schedule.title')}${n ? `<span class="badge" title="${t('schedule.badge')}">${n}</span>` : ''}</a></nav>`;
+      ${navLink(active)}</nav>`;
   }
   async function refresh(force) {
     if (pending) return pending;
@@ -314,5 +317,5 @@ window.Schedules = (() => {
     if (row) { location.hash = row.dataset.schedule; return true; }
     return false;
   }
-  return {route, nav, refresh, render, afterRender, click};
+  return {route, nav, navLink, refresh, render, afterRender, click};
 })();

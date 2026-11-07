@@ -8,6 +8,7 @@
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="stylesheet" href="/schedules.css">
+<link rel="stylesheet" href="/today.css">
 <style>
 /* Two colour sets: light by default, dark when the page sets data-theme="dark" (follows the system unless chosen) */
 :root{
@@ -287,6 +288,7 @@ a{color:var(--run)}
 
 <script src="/i18n.js"></script>
 <script src="/schedules.js"></script>
+<script src="/today.js"></script>
 <script>
 const POLL = 3000;
 const ST = [
@@ -419,6 +421,8 @@ let taskFilter = 'all', showFiles = false, prevRowSt = null, toastTimer = null, 
 
 function route() {
   const h = location.hash || '#/';
+  const today = Today.route(h);
+  if (today) return today;
   const schedule = Schedules.route(h);
   if (schedule) return schedule;
   if (h.startsWith('#/s/')) return {name: 'detail', key: decodeURIComponent(h.slice(4))};
@@ -461,7 +465,7 @@ async function tick(force) {
   const rt = route();
   try {
     snap = await getJson('/api/sessions');
-    await Schedules.refresh(force);
+    await Promise.all([Schedules.refresh(force), Today.refresh(force)]);
     if (snap.lang_locked || !validLang(preferredLang)) lang = validLang(snap.lang) ? snap.lang : browserLang;
     document.documentElement.lang = lang;
     if (rt.name === 'detail' && snap.ready) {      // Wait for the first scan before fetching session details.
@@ -517,6 +521,10 @@ function render() {
     Schedules.afterRender(rt);
     return;
   }
+  if (rt.name === 'today' || rt.name === 'ext') {
+    $('view').innerHTML = topBar() + Today.render(rt);
+    return;
+  }
   if (!snap || !snap.ready) {
     const p = (snap && snap.progress) || {};
     $('view').innerHTML = `<div class="top">${brand()}<span class="sp"></span>${settingsHtml()}</div><div class="loading">${t('loading.recent', (snap && snap.days) || 7)}${p.total ? ` (${p.done}/${p.total})` : ''}</div>`;
@@ -532,8 +540,17 @@ function topBar() {
   const vis = ((snap && snap.rows) || []).filter(r => !isDismissed(r) && inRange(r));
   const cc = vis.filter(r => r.client === 'claude').length, xc = vis.length - cc;
   const dayName = span() === 0 ? t('time.today') : t('header.last_days', span() + 1);
-  const scheduling = route().name === 'schedules';
-  return `<div class="top">${brand()}${Schedules.nav(scheduling)}<span class="meta">${scheduling ? t('schedule.refresh', 45) : t('header.clients', dayName, cc, xc)}</span><span class="sp"></span>${settingsHtml()}</div>`;
+  const rt = route(), scheduling = rt.name === 'schedules';
+  const meta = scheduling ? t('schedule.refresh', 45) : rt.name === 'today' ? Today.windowLabel() :
+    rt.name === 'ext' ? '' : t('header.clients', dayName, cc, xc);
+  return `<div class="top">${brand()}${navBar(rt)}<span class="meta">${esc(meta)}</span><span class="sp"></span>${settingsHtml()}</div>`;
+}
+// Views: Today (the home page), sessions, scheduled tasks, then the tabs source plugins add
+function navBar(rt) {
+  const link = (href, on, label, extra) => `<a href="${href}" class="${on ? 'on' : ''}"${on ? ' aria-current="page"' : ''}>${label}${extra || ''}</a>`;
+  return `<nav class="nav" aria-label="${t('schedule.navigation')}">${link('#/today', rt.name === 'today', t('today.title'), Today.badge())}` +
+    link('#/', rt.name === 'list' || rt.name === 'detail', t('schedule.sessions')) + Schedules.navLink(rt.name === 'schedules') +
+    Today.extLinks(rt) + '</nav>';
 }
 function toolBar() {
   return `<div class="tools"><label class="search">${ICON.search}<input id="search" placeholder="${t('search.placeholder')}" aria-label="${t('search.label')}" value="${esc(query)}"><kbd>/</kbd></label><span class="sp"></span>
@@ -942,6 +959,7 @@ function copyText(text) {
 
 document.addEventListener('click', e => {
   if (Schedules.click(e)) return;
+  if (Today.click(e)) return;
   const el = e.target;
   const ddb = el.closest('[data-dd]');
   if (ddb) {
@@ -1042,6 +1060,7 @@ window.addEventListener('hashchange', () => { detail = null; window.scrollTo(0, 
 document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(true); });
 
 if (location.hash === '#/closed') { status = 'off'; statusChosen = true; history.replaceState(null, '', '#/'); }
+else if (!location.hash) history.replaceState(null, '', location.pathname + location.search + '#/today');     // Today is the home page
 render();
 tick(true);
 setInterval(tick, POLL);

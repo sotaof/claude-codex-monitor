@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **Today** is the new home page: sessions waiting for your reply (last 3 days), scheduled tasks to handle, and the
+  items of installed source plugins, in one place. "Today" runs from midnight to 04:00 the next morning, so late-night
+  work is still the same day and the hours after midnight are not missed the next morning.
+- Source plugins: packages registered under the `claude_codex_monitor.sources` entry point add items to Today and,
+  optionally, a tab of their own. Done / Later / Not needed are stored by the monitor in `items.json`; a later item
+  comes back at 9:00 or as soon as it has new activity. A plugin that fails shows an error for itself only. Plugins
+  are never loaded with `--demo`. See `docs/plugins.md`.
+- `scripts/leak_guard.py` checks tracked files and recent commit messages for a private word list kept outside the
+  repository; CI runs it when the `CCM_LEAK_WORDS` secret is set, and `--install-hook` runs it before every push.
 - Startup diagnostics: `SIGUSR1` writes a timestamped all-thread Python stack dump to stderr, including in demo
   mode. The first session and scheduled-task snapshots each log their readiness time and count to stdout.
 - Read-only Scheduled tasks tab for user LaunchAgents, Claude desktop tasks and Codex automations, with

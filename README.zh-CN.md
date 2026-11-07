@@ -279,7 +279,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests
 python3 run.py --demo --port 8769
 ```
 
-只用 Python 标准库：`collect.py` 读记录，`server.py` 判断每个会话的状态并提供页面，`summarize.py` 负责规则摘录和模型总结，`autostart.py` 负责开机启动，`static/` 是页面、中英文对照表和图标。参与开发请看 [CONTRIBUTING.md](CONTRIBUTING.md)，安全问题按 [SECURITY.md](SECURITY.md) 里的方式报告。
+只用 Python 标准库：`collect.py` 读记录，`server.py` 判断每个会话的状态并提供页面，`summarize.py` 负责规则摘录和模型总结，`autostart.py` 负责开机启动，`static/` 是页面、中英文对照表和图标。`sources.py` 加载来源插件，把其他需要你处理的地方汇总到「今天」页，写法见 [docs/plugins.md](docs/plugins.md)；`scripts/leak_guard.py` 检查仓库里有没有不该公开的词。参与开发请看 [CONTRIBUTING.md](CONTRIBUTING.md)，安全问题按 [SECURITY.md](SECURITY.md) 里的方式报告。
 
 ## 许可
 

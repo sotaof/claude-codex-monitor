@@ -38,6 +38,7 @@ from . import autostart
 from . import collect as C
 from . import demo
 from . import schedules
+from . import sources
 from .collect import M
 from .config import parse_args
 from .summarize import (AUTO_ORDER, CLAUDE_MODELS, MODEL_RE, Summarizer, conversation_lang, installed, make_backend,
@@ -50,6 +51,8 @@ STATIC_FILES = {  # URL path -> (file in STATIC_DIR, content type)
     '/i18n.js': ('i18n.js', 'application/javascript; charset=utf-8'),
     '/schedules.js': ('schedules.js', 'application/javascript; charset=utf-8'),
     '/schedules.css': ('schedules.css', 'text/css; charset=utf-8'),
+    '/today.js': ('today.js', 'application/javascript; charset=utf-8'),
+    '/today.css': ('today.css', 'text/css; charset=utf-8'),
     '/favicon.svg': ('favicon.svg', 'image/svg+xml'),
     '/favicon.ico': ('favicon.ico', 'image/x-icon'),
     '/apple-touch-icon.png': ('apple-touch-icon.png', 'image/png'),
@@ -195,6 +198,10 @@ class Monitor:
         self.schedule_stop = threading.Event()
         self.schedule_collector = None if cfg.demo else schedules.ScheduleCollector(
             cfg.state_dir, cfg.codex_dir, C.CCD_DIR if cfg.desktop else None)
+        # Plugins: other sources of things that need you. Never loaded with made-up data.
+        self.item_state = sources.ItemState(os.path.join(cfg.state_dir, 'items.json'))
+        found, self.source_errors = ([], []) if cfg.demo else sources.load(cfg.state_dir, cfg.lang)
+        self.pollers = [sources.Poller(s) for s in found]
         C.set_tail_func(self.tail)
 
     # ---- Reading ----
@@ -415,6 +422,7 @@ class Monitor:
             self.pruned_at = now
             before = now - (self.cfg.days + 1) * 86400
             self.summ.prune(before)
+            self.item_state.prune({i['key'] for p in self.pollers for i in p.items}, before)
             with self.lock:
                 old = [k for k, v in self.dismissed.items() if k not in keys and v.get('at', 0) < before]
                 if old:
@@ -863,6 +871,41 @@ class Monitor:
                 'client': M('client.codex_desktop') if (th.originator or '').startswith('Codex Desktop') else (M('client.codex_cli') if th.originator else 'Codex')}
         return {'row': row, 'info': info, 'tasks': tasks, 'batches': bs, 'todos': None}
 
+    # ---- Today: what needs you, from every source ----
+    def poller(self, name):
+        return next((p for p in self.pollers if p.source.name == name), None)
+
+    def today(self, now=None):
+        now = time.time() if now is None else now
+        start, end = sources.day_window(now)
+        with self.lock:
+            agents = [{'key': r['key'], 'title': r['title'], 'client': r['client'],
+                       'since': r.get('msg_ts') or r.get('last_ts'), 'text': (r.get('items') or [{}])[0].get('text')}
+                      for r in self.snapshot.get('rows', []) if r.get('status') == 'wait' and not r.get('dismissed')]
+            tasks = []
+            for task in self.schedule_snapshot.get('tasks', []):
+                if task.get('group') == 'fail':
+                    run = (task.get('runs') or [{}])[0]
+                    tasks.append({'source': task['source'], 'id': task['id'], 'title': task['title'],
+                                  'status': run.get('status'), 'summary': run.get('summary'), 'since': run.get('start')})
+        found = []
+        for p in self.pollers:
+            try:
+                status = p.source.status() or {}
+            except Exception as e:
+                status = {'error': repr(e)}
+            found.append({'name': p.source.name, 'label': p.source.label, 'tab': bool(p.source.tab_script),
+                          'tab_script': p.source.tab_script, 'error': p.error, 'polled': p.polled, 'status': status,
+                          'items': [dict(i, handled=self.item_state.state(i, now)) for i in p.items]})
+        return {'ready': bool(self.snapshot.get('ready')), 'now': now, 'window': {'start': start, 'end': end},
+                'agents': agents, 'schedules': tasks, 'sources': found, 'source_errors': self.source_errors}
+
+    def item_action(self, key, action, until=None):
+        """Done, later or skip for a plugin item; restore puts it back. Only keys of a loaded source are accepted."""
+        if not isinstance(key, str) or not self.poller(key.split(':', 1)[0]):
+            raise KeyError(key)
+        self.item_state.set(key, action, until)
+
     # ---- Language and dismissal ----
     def set_dismissed(self, keys, on):
         rows = {r['key']: r for r in self.snapshot.get('rows', [])}
@@ -975,10 +1018,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 name, ctype = STATIC_FILES[u.path]
                 with open(os.path.join(STATIC_DIR, name), 'rb') as f:
                     return self._send(200, f.read(), ctype)
+            match = re.fullmatch(r'/ext/([a-z][a-z0-9-]{0,31})/([^/]+)', u.path)
+            if match:
+                return self._ext_static(*match.groups())
             if not self._token_ok():
                 return self._need_token()
             if u.path == '/api/sessions':
                 return self._send(200, self.mon.snapshot)
+            if u.path == '/api/today':
+                return self._send(200, self.mon.today())
+            match = re.fullmatch(r'/api/ext/([a-z][a-z0-9-]{0,31})/(.*)', u.path)
+            if match:
+                return self._ext_api('GET', match.group(1), match.group(2), q, None)
             if u.path == '/api/schedules':
                 self.mon.update_schedule_state()
                 return self._send(200, self.mon.schedule_snapshot)
@@ -1023,6 +1074,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 except ValueError:
                     return self._send(400, {'error': M('error.summary_settings')})
                 return self._send(200, {'ok': True, 'summary': self.mon.summary_info()})
+            if self.path == '/api/items':
+                body = body if isinstance(body, dict) else {}
+                try:
+                    self.mon.item_action(body.get('key'), body.get('action'), body.get('until'))
+                except KeyError:
+                    return self._send(404, {'error': M('today.item_missing')})
+                except ValueError:
+                    return self._send(400, {'error': M('today.bad_action')})
+                return self._send(200, {'ok': True})
+            match = re.fullmatch(r'/api/ext/([a-z][a-z0-9-]{0,31})/(.*)', urllib.parse.urlparse(self.path).path)
+            if match:
+                return self._ext_api('POST', match.group(1), match.group(2), {}, body)
             keys = [k for k in body.get('keys') or [] if isinstance(k, str)]
             if self.path == '/api/schedules/previous':
                 keys = self.mon.schedule_previous(body.get('source'), body.get('id'))
@@ -1048,6 +1111,27 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._send(200, {'ok': True, 'keys': keys})
         except Exception as e:
             return self._send(500, {'error': M('error.internal', repr(e))})
+
+    def _ext_static(self, name, file):
+        """A file a source's tab needs: only plain names with a known type, from that source's own folder."""
+        poller = self.mon.poller(name)
+        folder = poller and poller.source.static_dir
+        match = sources.STATIC_RE.match(file)
+        if not folder or not match:
+            return self._send(404, {'error': M('error.not_found')})
+        path = os.path.realpath(os.path.join(folder, file))
+        if not path.startswith(os.path.realpath(folder) + os.sep) or not os.path.isfile(path):
+            return self._send(404, {'error': M('error.not_found')})
+        with open(path, 'rb') as f:
+            return self._send(200, f.read(), sources.STATIC_TYPES[match.group(1)])
+
+    def _ext_api(self, method, name, path, query, body):
+        poller = self.mon.poller(name)
+        answer = poller.source.handle(method, path, query, body) if poller else None
+        if answer is None:
+            return self._send(404, {'error': M('error.not_found')})
+        code, value = answer
+        return self._send(code, value)
 
     def _file(self, q):
         """Read-only output viewer, restricted to text files in session and Claude background-output folders."""
@@ -1187,6 +1271,9 @@ def main(argv=None):
     threading.Thread(target=mon.loop, daemon=True).start()
     schedule_thread = threading.Thread(target=mon.schedules_loop, daemon=True)
     schedule_thread.start()
+    for poller in mon.pollers:
+        poller.start()
+        print('claude-codex-monitor: source %s loaded' % poller.source.name, flush=True)
     srv.mon = mon
     srv.token = load_token(cfg.state_dir) if cfg.token else None
     srv.token_file = os.path.join(cfg.state_dir, 'token')
@@ -1203,6 +1290,8 @@ def main(argv=None):
         pass
     finally:
         mon.schedule_stop.set()
+        for poller in mon.pollers:
+            poller.stop.set()
         schedule_thread.join(timeout=5)
         srv.server_close()
 

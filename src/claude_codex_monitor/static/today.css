@@ -1,0 +1,26 @@
+/* Today page: columns of things that need you, from every source */
+.tday{padding:14px 22px 22px}
+.tlead{margin:0 0 12px;color:var(--muted);font-size:13.5px}
+.tgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+.tcol{border:1px solid var(--line);border-radius:10px;background:var(--surface);overflow:hidden;min-width:0}
+.tcol h3{margin:0;font-size:14px;padding:10px 12px;border-bottom:1px solid var(--line2);display:flex;justify-content:space-between;gap:8px}
+.tline{display:flex;flex-wrap:wrap;align-items:flex-start;gap:4px 8px;padding:9px 12px;border-bottom:1px solid var(--line2);font-size:13px}
+.tline .tacts{width:100%;justify-content:flex-end}
+.tline:last-of-type{border-bottom:0}
+.tmain{display:flex;flex-direction:column;min-width:0;flex:1}
+.tmain a,.tmain b{font-weight:600;color:var(--ink);text-decoration:none;overflow:hidden;text-overflow:ellipsis}
+.tmain a:hover{text-decoration:underline}
+.tsub{color:var(--muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tacts{display:flex;gap:4px;flex:none}
+.tbtn{border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:1px 7px;font-size:12px;color:var(--ink)}
+.tbtn.pri{background:var(--ink);border-color:var(--ink);color:var(--bg)}
+.tbtn:disabled{opacity:.5}
+.tk{flex:none;font-size:11.5px;font-weight:600;padding:0 6px;border-radius:5px;line-height:19px;background:var(--line2);color:var(--muted)}
+.tk.k-approve{background:var(--run-bg);color:var(--run)}
+.tk.k-reply,.tk.k-deliver{background:var(--wait-bg);color:var(--wait)}
+.tk.k-alert{background:var(--fail-bg);color:var(--fail)}
+.tempty{padding:14px 12px;color:var(--faint);font-size:13px}
+.tmore{display:block;padding:8px 12px;font-size:12.5px;color:var(--run);text-decoration:none;border-top:1px solid var(--line2)}
+.terr{margin:0 0 8px;padding:7px 10px;border-radius:8px;background:var(--fail-bg);color:var(--fail);font-size:12.5px}
+.tcol .terr{margin:8px 12px}
+@media (max-width:640px){.tday{padding:12px}}

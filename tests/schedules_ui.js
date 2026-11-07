@@ -47,6 +47,7 @@ context.fetch = async (url, options = {}) => {
   }
   else if(u.pathname === '/api/sessions') data = fixtures.sessions;
   else if(u.pathname === '/api/schedules') data = fixtures.schedules;
+  else if(u.pathname === '/api/today') data = {ready:true,now:Date.now()/1000,window:{start:0,end:1},agents:[],schedules:[],sources:[],source_errors:[]};
   else if(u.pathname === '/api/session') data = fixtures.details[u.searchParams.get('key')];
   else if(u.pathname.endsWith('/diagnosis')) data = {asleep:false,launchd_loaded:true,
     desktop_running:true,dispatched:false,modified:null,disabled:null};
@@ -58,7 +59,7 @@ context.fetch = async (url, options = {}) => {
 };
 context.window=context;
 vm.createContext(context);
-for(const name of ['i18n.js','schedules.js'])
+for(const name of ['i18n.js','schedules.js','today.js'])
   vm.runInContext(fs.readFileSync(path.join(staticDir,name),'utf8'),context,{filename:name});
 for(const [i,match] of [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].entries())
   vm.runInContext(match[1],context,{filename:'app-script-'+i});

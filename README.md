@@ -346,6 +346,8 @@ python3 run.py --demo --port 8769
 Standard library only. `collect.py` reads the logs, `server.py` works out each session's state and serves the page,
 `summarize.py` handles the rules and the model summaries, `autostart.py` the login item, and `static/` holds the page,
 its translations and the icons. `schedules.py` reads scheduled tasks and records launchd observations.
+`sources.py` loads source plugins, other places that can need you, for the Today page; see
+[docs/plugins.md](docs/plugins.md). `scripts/leak_guard.py` keeps a private word list out of the repository.
 When Node is available, the tests also run the page scripts without external packages; this is not a browser layout test.
 See [CONTRIBUTING.md](CONTRIBUTING.md), and report security problems as described in
 [SECURITY.md](SECURITY.md).
