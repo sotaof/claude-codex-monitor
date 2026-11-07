@@ -180,7 +180,7 @@ class Monitor:
         self.exec_metas = []
         self.spawn_metas = {}
         self.cl_paths = {}            # claude:<id> -> log file.
-        self.cli_links = {}           # claude -p command ID -> resulting Claude session key.
+        self.cli_links = {}           # claude -p command ID -> the Claude session keys it started.
         self.cli_children = set()     # Child Claude sessions, excluded from the top-level list.
         self.cli_calls = {}           # Parent session key -> Codex commands invoking claude -p.
         self.cards = {}               # Claude session ID -> pending desktop new-session cards.
@@ -511,7 +511,8 @@ class Monitor:
             for tid in st.order:
                 t = st.tasks[tid]
                 if t['kind'] == 'bash' and t.get('claude') and tid not in links:
-                    calls.append({'id': tid, 'ts': t['start'], 'cmd': t['command'], 'cwd': t.get('cwd')})
+                    calls.append({'id': tid, 'ts': t['start'], 'cmd': t['command'], 'cwd': t.get('cwd'),
+                                  'status': t['status'], 'end': t['end']})
             for tid, rpath in links.items():
                 for c in self.rollout_state(rpath).claude_calls.values():
                     c2 = dict(c, title=None)
@@ -523,14 +524,35 @@ class Monitor:
                 for c in th.claude_calls.values():
                     calls.append(c)
                     via.setdefault('codex:' + th.id, []).append((c, M('exec.claude_cli')))
-        self.cli_links = C.link_claude_cli(calls, cands) if calls and cands else {}
-        self.cli_children = set(self.cli_links.values())
+        self.cli_links = C.link_claude_cli(calls, cands, now) if calls and cands else {}
+        self.cli_children = {k for keys in self.cli_links.values() for k in keys}
+        # claude -p runs left over in a session's own scratchpad folder are that session's, even when the command
+        # that started them was not recognised (a Python subprocess, say): one batch subtask per parent.
+        orphans = {}
+        for m in cands:
+            parent = C.scratch_parent(m['cwd'])
+            if (m['cli'] and parent and m['key'] not in self.cli_children and m['key'] != 'claude:' + parent
+                    and 'claude:' + parent in self.cl_paths):
+                orphans.setdefault(parent, []).append(m)
+        for parent, ms in orphans.items():
+            cid = 'scratch:' + parent
+            self.cli_links[cid] = [m['key'] for m in ms]
+            self.cli_children.update(self.cli_links[cid])
+            first = min(m['start'] for m in ms)
+            call = {'id': cid, 'ts': dt.datetime.fromtimestamp(first, dt.timezone.utc).isoformat(), 'cmd': '',
+                    'title': C.M('task.scratch_batch'), 'status': 'completed', 'end': None}
+            via.setdefault('claude:' + parent, []).append((call, C.M('exec.claude_cli')))
         self.cli_calls = via
 
     def cli_child(self, call_id):
-        key = self.cli_links.get(call_id)
-        path = self.cl_paths.get(key) if key else None
-        return self.state_of(path) if path else None
+        """The Claude sessions a claude -p command started, as session states."""
+        out = []
+        for key in self.cli_links.get(call_id) or ():
+            path = self.cl_paths.get(key)
+            st = self.state_of(path) if path else None
+            if st is not None:
+                out.append(st)
+        return out
 
     def cli_tasks(self, key, now, full):
         return [C.cli_task(c, self.cli_child(c['id']), now, full, executor=label) for c, label in self.cli_calls.get(key, [])]

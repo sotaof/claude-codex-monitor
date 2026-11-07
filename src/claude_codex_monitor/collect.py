@@ -163,8 +163,11 @@ def project_of(cwd):
 _script_cache = {}
 
 # A command segment (split at ; && || | newlines $( `) must start with `claude ... -p/--print` or `codex ... exec`.
-# Quoted mentions (grep, echo, ps) do not count. A segment may start with ( time nohup timeout N, variables, env, a path.
-CLI_PREFIX = r'^(?:\(\s*)*(?:(?:time|nohup)\s+|timeout\s+\S+\s+)*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*(?:env\s+(?:\S+=\S*\s+)*)?(?:[\w.~/-]*/)?'
+# Quoted mentions (grep, echo, ps) do not count. A segment may start with ( time nohup timeout N, variables, env,
+# xargs / parallel with their options (ls *.json | xargs -P 6 -n 1 claude -p), a path.
+FANOUT_PREFIX = r'(?:(?:xargs|parallel)\s+(?:-[\w-]+(?:\s+[^-\s]\S*)?\s+)*)?'
+CLI_PREFIX = (r'^(?:\(\s*)*(?:(?:time|nohup)\s+|timeout\s+\S+\s+)*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*(?:env\s+(?:\S+=\S*\s+)*)?'
+              + FANOUT_PREFIX + r'(?:[\w.~/-]*/)?')
 CLAUDE_SEG_RE = re.compile(CLI_PREFIX + r'claude\s+(?:.*\s)?(?:-p|--print)(?:\s|$|=)', re.S)
 CODEX_SEG_RE = re.compile(CLI_PREFIX + r'codex\s+(?:\S+\s+)*?exec(?:\s|$)', re.S)
 HELP_RE = re.compile(r'\s(?:--help|-h|--version|-V)(?:\s|$)')
@@ -208,6 +211,8 @@ def _claude_in(text):
 
 
 INTERPRETERS = {'bash', 'sh', 'zsh', 'python', 'python3', 'node', 'source', '.', 'tsx', 'bun', 'deno'}
+FANOUT = {'xargs', 'parallel'}
+FANOUT_ARG = {'-P', '-n', '-I', '-L', '-s', '-d', '-E', '-a', '-j', '--max-procs', '--max-args', '--jobs'}
 ASSIGN_RE = re.compile(r'(?:^|[\s;&(])([A-Za-z_]\w*)=([^\s;&|`$()\'"]+)')
 
 
@@ -217,6 +222,18 @@ def _expand(tok, cmd):
         env = dict(ASSIGN_RE.findall(cmd))
         tok = re.sub(r'\$\{?(\w+)\}?', lambda m: env.get(m.group(1), m.group(0)), tok)
     return os.path.expanduser(tok)
+
+
+CD_RE = re.compile(r'(?:^|[;&|(\n])\s*cd\s+([^\s;&|)]+)')
+
+
+def cmd_cwd(cmd, cwd):
+    """The folder a command ends up running in: its last `cd DIR`, otherwise the shell's own folder."""
+    dirs = CD_RE.findall(_unquote(cmd or ''))
+    if not dirs:
+        return cwd
+    d = _expand(dirs[-1].strip('\'"'), cmd)
+    return os.path.normpath(d if d.startswith('/') else os.path.join(cwd or '/', d))
 
 
 def _executed_scripts(cmd):
@@ -229,6 +246,10 @@ def _executed_scripts(cmd):
             i += 1
         if i < len(toks) and toks[i] == 'timeout':
             i += 2
+        if i < len(toks) and os.path.basename(toks[i]) in FANOUT:      # ls chunks/* | xargs -P 6 -n 1 ./run_one.sh
+            i += 1
+            while i < len(toks) and toks[i].startswith('-'):
+                i += 2 if toks[i] in FANOUT_ARG else 1
         if i >= len(toks):
             continue
         if toks[i].endswith(SCRIPT_EXT):
@@ -246,9 +267,10 @@ def _calls_cli(cmd, cwd, found):
     """Whether the command, or a script it runs, invokes a CLI."""
     if found(cmd):
         return True
+    here = cmd_cwd(cmd, cwd)        # cd scratchpad && xargs ./run_one.sh: the script is in scratchpad
     for tok in _executed_scripts(cmd):
         tok = _expand(tok, cmd)
-        p = tok if tok.startswith('/') else os.path.join(cwd or '', tok)
+        p = tok if tok.startswith('/') else os.path.join(here or '', tok)
         key = (p, found.__name__)
         if key not in _script_cache:
             try:
@@ -1208,10 +1230,25 @@ def link_codex(sess, exec_metas, now):
     return links
 
 
-def link_claude_cli(calls, cands):
-    """Match claude -p calls to sessions: prompt content first, then nearest start (same cwd, within a minute)."""
+SCRATCH_RE = re.compile(r'/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/scratchpad(?:/|$)')
+
+
+def scratch_parent(cwd):
+    """The Claude session ID whose scratchpad folder this is (/tmp/claude-502/<proj>/<session>/scratchpad/...)."""
+    m = SCRATCH_RE.search(cwd or '')
+    return m.group(1) if m else None
+
+
+def link_claude_cli(calls, cands, now=None):
+    """Match claude -p calls to sessions; returns call ID -> [session keys], first the one matched by prompt or time.
+    1. Prompt content: the session's first message appears in the command or in a prompt file it reads.
+    2. Nearest start: a definite CLI session started in the same folder within a minute.
+    3. Fan-out: a command that runs claude -p many times (xargs, a loop, a script) owns every further CLI session
+       started in the folder it runs in while it was still running."""
     links, used = {}, set()
+    now = now or time.time()
     cands = sorted(cands, key=lambda m: m['start'] or 0)
+    dirs = {c['id']: {d for d in (c.get('cwd'), cmd_cwd(c['cmd'], c.get('cwd'))) if d} for c in calls}
     for c in sorted(calls, key=lambda c: parse_ts(c['ts']) or 0):
         t = parse_ts(c['ts']) or 0
         snips = prompt_snippets(c['cmd'], c.get('cwd'))
@@ -1221,7 +1258,7 @@ def link_claude_cli(calls, cands):
                 continue
             fu = norm(m.get('first_user'))
             if (len(fu) >= 4 and fu[:80] in cmd_n) or any(s in fu for s in snips):
-                links[c['id']] = m['key']
+                links[c['id']] = [m['key']]
                 used.add(m['key'])
                 break
     for c in calls:
@@ -1229,10 +1266,22 @@ def link_claude_cli(calls, cands):
             continue
         t = parse_ts(c['ts']) or 0
         pool = [m for m in cands if m['key'] not in used and m.get('cli') and m['start'] and abs(m['start'] - t) <= 60
-                and (not c.get('cwd') or not m.get('cwd') or m['cwd'] == c['cwd'])]
+                and (not dirs[c['id']] or not m.get('cwd') or m['cwd'] in dirs[c['id']])]
         if pool:
             m = min(pool, key=lambda m: abs(m['start'] - t))
-            links[c['id']] = m['key']
+            links[c['id']] = [m['key']]
+            used.add(m['key'])
+    for m in cands:
+        if m['key'] in used or not m.get('cli') or not m['start'] or not m.get('cwd'):
+            continue
+        owners = []
+        for c in calls:
+            t = parse_ts(c['ts']) or 0
+            end = parse_ts(c.get('end')) or (now if status_key(c.get('status') or 'running') == 'run' else t + 600)
+            if t - 10 <= m['start'] <= end + 10 and m['cwd'] in dirs[c['id']]:
+                owners.append((t, c['id']))
+        if owners:
+            links.setdefault(max(owners)[1], []).append(m['key'])
             used.add(m['key'])
     return links
 
@@ -1248,8 +1297,13 @@ def cli_child_status(child, now):
     return 'fail', M('note.incomplete')
 
 
-def cli_task(call, child, now, full=True, executor=None):
-    """Represent a claude -p call as a subtask: use its session state if available, otherwise its command state."""
+def cli_task(call, children, now, full=True, executor=None):
+    """Represent a claude -p call as a subtask: use its session state if available, otherwise its command state.
+    children: the Claude sessions it started; a command that started several becomes one batch subtask."""
+    children = [c for c in children or () if c is not None]
+    if len(children) > 1:
+        return cli_batch_task(call, children, now, full, executor)
+    child = children[0] if children else None
     start = parse_ts(call['ts'])
     title = call.get('title') or (child is not None and plain_line(child.first_user, 50)) or clip(call['cmd'].replace('\n', ' '), 50)
     out = {'id': call['id'], 'title': short_title(title), 'status': status_key(call.get('status') or 'running'),
@@ -1280,6 +1334,51 @@ def cli_task(call, child, now, full=True, executor=None):
             if child.model:
                 out['executor'] = M('exec.model', out['executor'], child.model)
     if out['status'] == 'run':
+        idle = now - (out['last_activity'] or now)
+        out['stale'] = idle > STALE_SECONDS
+        out['idle_seconds'] = idle
+    return out
+
+
+def cli_batch_task(call, children, now, full, executor):
+    """One command that ran claude -p many times (xargs -P, a loop): running while any of its sessions runs."""
+    sts = [(c, cli_child_status(c, now)[0]) for c in children]
+    running = [c for c, st in sts if st == 'run']
+    failed = [c for c, st in sts if st == 'fail']
+    call_st = status_key(call.get('status') or 'running')
+    status = 'run' if running or call_st == 'run' else 'fail' if failed or call_st == 'fail' else 'ok'
+    starts = [parse_ts(c.first_ts) for c in children if c.first_ts] + [parse_ts(call['ts'])]
+    lasts = [parse_ts(c.last_ts) for c in children if c.last_ts]
+    ends = [parse_ts(c.last_asst_ts) for c in children if c.last_asst_ts]
+    latest = max(children, key=lambda c: c.last_ts or '')
+    out = {'id': call['id'], 'title': short_title(call.get('title') or M('task.cli_batch', len(children))),
+           'status': status, 'start': min(s for s in starts if s) if any(starts) else None,
+           'end': (max(ends + [parse_ts(call.get('end')) or 0]) or None) if status != 'run' else None,
+           'note': M('note.batch_failed', len(failed), len(children)) if failed else call.get('note'),
+           'progress': None, 'last_activity': max(lasts) if lasts else parse_ts(call['ts']), 'say': call.get('say'),
+           'fanout': {'total': len(children), 'running': len(running), 'failed': len(failed)}}
+    if full:
+        base = executor if executor is not None else M('exec.claude_cli')
+        out['executor'] = M('exec.batch', base, len(children), len(running))
+        out['command'] = call['cmd']
+        n_tools = tokens = 0
+        files = []
+        for c in children:
+            u = c.usage_sum()
+            n_tools += c.n_tools
+            tokens += u['input'] + u['cache_read'] + u['cache_write'] + u['output']
+            files += [f for f in c.files if f not in files]
+        out['stats'] = {'tool_calls': n_tools, 'tokens': tokens}
+        out['files'] = files[:12]
+        done = [c for c, st in sts if st != 'run' and c.last_text]
+        last_done = max(done, key=lambda c: c.last_asst_ts or '') if done else None
+        if last_done is not None:
+            out['result'] = clip(last_done.last_text, 3000)
+        out['current'] = (latest.last_tool or {}).get('text')
+        out['events'] = [{'ts': x['ts'], 'kind': 'msg' if x['role'] == 'assistant' else 'ask', 'text': clip(x['text'], 300)}
+                         for x in list(latest.turns)[-8:]]
+        out['child_id'] = latest.sid
+    if status == 'run':
         idle = now - (out['last_activity'] or now)
         out['stale'] = idle > STALE_SECONDS
         out['idle_seconds'] = idle
@@ -1380,7 +1479,7 @@ def claude_task(t, sdir, links, rollout_state, now, full=True, cli_child=None, s
     if t['kind'] == 'bash' and t.get('claude') and not rpath:
         call = {'id': t['id'], 'ts': t['start'], 'cmd': t['command'], 'cwd': t.get('cwd'), 'say': t.get('say'),
                 'title': t['title'], 'status': t['status'], 'end': t['end'], 'note': t.get('note')}
-        return cli_task(call, cli_child(t['id']) if cli_child else None, now, full)
+        return cli_task(call, cli_child(t['id']) if cli_child else [], now, full)
     out = {'id': t['id'], 'title': short_title(t['title']), 'status': t['status'], 'start': start,
            'end': parse_ts(t['end']), 'note': t.get('note'), 'progress': None, 'last_activity': start}
     r = rollout_state(rpath) if rpath else None
