@@ -88,15 +88,40 @@ class Source:
         return None
 
 
+class EnvEntryPoint:
+    """A source named in $CCM_SOURCES as name=module:factory, for a plugin on PYTHONPATH that is not pip-installed."""
+    def __init__(self, name, value):
+        self.name, self.value = name, value
+
+    def load(self):
+        import importlib
+        module, _, attr = self.value.partition(':')
+        obj = importlib.import_module(module)
+        for part in filter(None, attr.split('.')):
+            obj = getattr(obj, part)
+        return obj
+
+
+def _env_entry_points():
+    found = []
+    for part in os.environ.get('CCM_SOURCES', '').split(','):
+        name, _, value = part.strip().partition('=')
+        if name and value:
+            found.append(EnvEntryPoint(name.strip(), value.strip()))
+    return found
+
+
 def _entry_points():
     try:
         from importlib import metadata
     except ImportError:         # pragma: no cover - Python < 3.8 is not supported anyway
-        return []
+        return _env_entry_points()
     eps = metadata.entry_points()
     if hasattr(eps, 'select'):
-        return list(eps.select(group=ENTRY_POINT_GROUP))
-    return list(eps.get(ENTRY_POINT_GROUP, []))         # Python 3.9
+        installed = list(eps.select(group=ENTRY_POINT_GROUP))
+    else:
+        installed = list(eps.get(ENTRY_POINT_GROUP, []))         # Python 3.9
+    return installed + _env_entry_points()
 
 
 def load(state_dir, lang='', demo=False, entry_points=None):

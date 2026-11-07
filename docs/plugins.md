@@ -31,6 +31,9 @@ def make(context):
 inbox = "my_inbox:make"
 ```
 
+Without installing it, a plugin on `PYTHONPATH` can be named in an environment variable instead:
+`CCM_SOURCES=inbox=my_inbox:make` (several separated by commas).
+
 The entry point name (`inbox`) is the source's name: lower case letters, digits and dashes. It is used in URLs and in
 the plugin's own state folder, `<state dir>/ext/<name>/`, which `context.state_dir` points to.
 

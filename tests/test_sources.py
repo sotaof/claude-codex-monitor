@@ -84,6 +84,13 @@ class Loading(unittest.TestCase):
         self.assertEqual([s.name for s in found], ['inbox'])
         self.assertEqual([e['name'] for e in errors], ['Bad Name', 'boom', 'plain', 'inbox'])
 
+    def test_a_source_named_in_the_environment(self):
+        with mock.patch.dict(os.environ, {'CCM_SOURCES': 'inbox=tests.test_sources:Inbox, broken'}):
+            eps = sources._env_entry_points()
+            self.assertEqual([e.name for e in eps], ['inbox'])
+            found, errors = sources.load(self.dir, entry_points=eps)
+        self.assertEqual(([s.name for s in found], errors), (['inbox'], []))
+
     def test_no_plugins_installed(self):
         with mock.patch.object(sources, '_entry_points', return_value=[]):
             self.assertEqual(sources.load(self.dir), ([], []))
