@@ -56,12 +56,12 @@ class FanoutGrouping(unittest.TestCase):
         root = tempfile.mkdtemp()
         now = time.time()
         cd, xd = demo.build(os.path.join(root, 'data'), now)
-        parent = demo._Claude(cd, 'seatalk', PROJECT, 'Seatalk follow-ups')
+        parent = demo._Claude(cd, 'chat', PROJECT, 'Chat follow-ups')
         short = tempfile.mkdtemp(prefix='ccm-', dir='/tmp')       # the folder name Claude derives from it must stay short
         self.addCleanup(shutil.rmtree, short, True)
         scratch = os.path.join(short, PROJECT.replace('/', '-'), parent.sid, 'scratchpad')
         os.makedirs(scratch)
-        parent.user(now - 600, 'Find what I need to follow up on in SeaTalk.')
+        parent.user(now - 600, 'Find what I need to follow up on in my team chat.')
         parent.tool(now - 500, 'bg1', 'Bash', {'command': command.format(scratch=scratch), 'run_in_background': True,
                                                 'description': 'Run all 6 chunks in parallel'})
         parent.result(now - 500, 'bg1', 'Command running in background with ID: b1', {'backgroundTaskId': 'b1'})
