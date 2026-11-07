@@ -323,7 +323,7 @@ def schedules(now):
                 if aid in ('content-check', 'review-plan') and n in (1, 2, 3):
                     result = 'fail' if aid == 'content-check' else 'stuck'
                 start = now - 60 * (8 + i * 11) - n * 86400
-                summary = M('schedule.exit', 1 if result == 'fail' else 0) if source == 'launchd' else {
+                summary = M('schedule.exit', 1 if result == 'fail' else 0) if source == 'launchd' and result != 'miss' else {
                     'ok': 'Checked my-app; all tests pass.',
                     'fail': 'Unable to connect to example.com (ENOTFOUND).',
                     'stuck': 'Keep the legacy endpoint for another 30 days?',

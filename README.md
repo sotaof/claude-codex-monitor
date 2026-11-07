@@ -58,6 +58,8 @@ last 50 run results. Failed, **Needs you** and missed tasks are grouped under **
 session or its launchd log excerpt. KeepAlive services have a separate card. This view is read-only: it cannot run,
 pause or edit a task. launchd history starts when monitoring begins.
 
+![Scheduled tasks: five status cards with Needs attention selected, listing a failed, a Needs you and a missed task, each with its schedule, next run and last 14 runs](docs/images/schedules.png)
+
 Run details show the next step: waiting items from the session, network or sign-in advice, or evidence for a
 missed trigger. **Ignore this run** handles one issue; **Mark all earlier issues as handled** handles earlier failed,
 missed or Needs you runs, excluding the latest. Both have Undo, also available beside each handled run.
@@ -65,6 +67,8 @@ Handled results keep their original color as an outline with a check. Handling a
 its session, and dismissing or restoring a session updates its runs. New messages invalidate dismissal as on the
 session page. A real user reply after a run ended, followed by more execution, also counts as handled; system
 notifications do not. Only the latest run determines Needs attention and the tab badge.
+
+![Run detail for a missed launchd task: the next step lists whether the computer was asleep and whether the job was loaded, with Ignore this run and Mark all earlier issues as handled](docs/images/schedule-detail.png)
 
 <details><summary>Dark theme</summary>
 
